@@ -123,23 +123,17 @@ brew install --cask spaceswitch   # app
 ```bash
 git clone https://github.com/bisak/spaceswitch
 cd spaceswitch
-swift build -c release          # command line tool
-./Scripts/build-app.sh          # builds build/SpaceSwitch.app
-swift test                      # needs Xcode; see below
+make              # list every target
+make run          # build the app and launch it
+make install      # install the command line tool and helper
 ```
 
-macOS decides which control appearance an app gets from the SDK it was linked
-against, so an app built with an SDK older than the running system is drawn a
-release behind. `Scripts/build-app.sh` picks the newest macOS SDK it can find —
-which is often the one in the Command Line Tools rather than the one Xcode
-provides — and warns if that is still older than your system.
-
-The test frameworks ship with Xcode rather than the Command Line Tools, so
-`swift test` needs an Xcode toolchain:
-
-```bash
-DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift test
-```
+`make` selects a toolchain per task, because on a typical Mac no single one can
+do both jobs. An app is drawn with the controls of the SDK it was linked
+against, so it needs one at least as new as the running system — and that is
+often the Command Line Tools rather than Xcode. The test frameworks, meanwhile,
+ship only inside Xcode. `Scripts/toolchain.sh` works out which is which, and
+warns if the newest SDK available is still older than your system.
 
 ## Usage
 

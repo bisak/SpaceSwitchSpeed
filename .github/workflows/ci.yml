@@ -19,25 +19,8 @@ jobs:
       - name: Show toolchain
         run: |
           swift --version
-          xcrun --show-sdk-version
+          make help
 
-      - name: Build
-        run: swift build --build-tests
-
-      # The test frameworks ship with Xcode, not with the Command Line Tools,
-      # so tests run under whichever Xcode the runner provides.
-      - name: Test
-        run: swift test
-
-      - name: Check formatting
-        run: swift format lint --recursive --strict Sources Tests
-
-      - name: Build the app bundle
-        run: ./Scripts/build-app.sh
-
-      - name: Verify the bundle
-        run: |
-          test -x build/SpaceSwitch.app/Contents/MacOS/SpaceSwitch
-          test -x build/SpaceSwitch.app/Contents/Helpers/spaceswitch
-          codesign --verify --deep --strict build/SpaceSwitch.app
-          ./build/SpaceSwitch.app/Contents/Helpers/spaceswitch presets --refresh 120
+      # The same target developers run, so CI and local cannot drift.
+      - name: Lint, test, build and verify
+        run: make ci
