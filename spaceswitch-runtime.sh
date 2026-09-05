@@ -8,11 +8,12 @@
 # or a reboot restores stock behaviour.
 #
 # Requires System Integrity Protection to be disabled, because a debugger
-# cannot otherwise attach to a platform binary.
+# cannot otherwise attach to a platform binary. Root is not needed: Dock runs
+# as you. If the attach is refused, try again under sudo.
 #
-#   sudo bash spaceswitch-runtime.sh 0      # instant
-#   sudo bash spaceswitch-runtime.sh 0.5    # half as long
-#   sudo bash spaceswitch-runtime.sh 1      # back to stock
+#   bash spaceswitch-runtime.sh 0      # instant
+#   bash spaceswitch-runtime.sh 0.5    # half as long
+#   bash spaceswitch-runtime.sh 1      # back to stock
 
 set -euo pipefail
 
@@ -21,7 +22,7 @@ TOOL="$HERE/spaceswitch.py"
 SPEED="${1:-}"
 
 if [[ -z "$SPEED" ]]; then
-    echo "usage: sudo bash $(basename "$0") <speed 0..1>" >&2
+    echo "usage: bash $(basename "$0") <speed 0..1>" >&2
     echo "       1 = stock macOS, 0 = instant" >&2
     exit 2
 fi
@@ -31,14 +32,9 @@ if [[ ! -f "$TOOL" ]]; then
     exit 1
 fi
 
-if [[ $EUID -ne 0 ]]; then
-    echo "Run this with sudo." >&2
-    exit 1
-fi
-
 if csrutil status | grep -q "status: enabled"; then
     echo "System Integrity Protection is enabled, so a debugger cannot attach to Dock." >&2
-    echo "Disable it from Recovery first, or patch the file with spaceswitch.py." >&2
+    echo "Disable it from Recovery first." >&2
     exit 1
 fi
 
@@ -57,46 +53,77 @@ if [[ -z "$PLAN" ]]; then
     exit 1
 fi
 
-echo
-echo "Attaching to Dock (pid $DOCK_PID)..."
+# lldb's -o cannot carry a multi-line script, so stage it in a file and exec it.
+DRIVER="$(mktemp -t spaceswitch)"
+trap 'rm -f "$DRIVER"' EXIT
 
-lldb --batch \
-     -o "process attach --pid $DOCK_PID" \
-     -o "script
+cat >"$DRIVER" <<DRIVER_EOF
 import lldb
 
 plan = []
-for line in '''$PLAN'''.strip().splitlines():
+for line in """$PLAN""".strip().splitlines():
     _, off, hexbytes = line.split()
     plan.append((int(off, 16), bytes.fromhex(hexbytes)))
 
-t = lldb.debugger.GetSelectedTarget()
-p = t.GetProcess()
+target = lldb.debugger.GetSelectedTarget()
+proc = target.GetProcess()
 
 mod = None
-for m in t.module_iter():
-    if m.GetFileSpec().GetFilename() == 'Dock':
+for m in target.module_iter():
+    if m.GetFileSpec().GetFilename() == "Dock":
         mod = m
         break
-if mod is None:
-    raise SystemExit('Dock module not found')
 
-base = mod.FindSection('__TEXT').GetLoadAddress(t)
-err = lldb.SBError()
-done = 0
-for off, blob in plan:
-    addr = base + off
-    n = p.WriteMemory(addr, blob, err)
-    if not err.Success() or n != len(blob):
-        print('  FAILED at 0x%x: %s' % (addr, err))
-        continue
-    print('  wrote %d bytes at 0x%x' % (n, addr))
-    done += 1
-print('%d of %d writes applied' % (done, len(plan)))
-" \
-     -o "detach" \
-     -o "quit"
+if mod is None:
+    print("FAIL: Dock module not found in the attached process")
+else:
+    base = mod.FindSection("__TEXT").GetLoadAddress(target)
+    err = lldb.SBError()
+    ok = 0
+    for off, blob in plan:
+        addr = base + off
+        proc.WriteMemory(addr, blob, err)
+        if not err.Success():
+            print("FAIL: 0x%x: %s" % (addr, err))
+            continue
+        back = proc.ReadMemory(addr, len(blob), err)
+        if back == blob:
+            print("  0x%x now %s" % (addr, back.hex()))
+            ok += 1
+        else:
+            print("FAIL: 0x%x reads back as %s" % (addr, back.hex() if back else "??"))
+    print("RESULT %d/%d" % (ok, len(plan)))
+DRIVER_EOF
 
 echo
-echo "Try a three-finger swipe or Control+Arrow."
+echo "Attaching to Dock (pid $DOCK_PID)..."
+
+OUT="$(lldb --batch \
+    -o "process attach --pid $DOCK_PID" \
+    -o "script exec(open('$DRIVER').read())" \
+    -o "detach" \
+    -o "quit" 2>&1)"
+
+echo "$OUT" | grep -E '^  0x[0-9a-f]+ now |^FAIL|^RESULT' || true
+
+if ! echo "$OUT" | grep -q '^RESULT'; then
+    echo "The patch did not run. Full lldb output:" >&2
+    echo "$OUT" >&2
+    exit 1
+fi
+
+if echo "$OUT" | grep -q '^FAIL'; then
+    exit 1
+fi
+
+# Leaving Dock suspended would freeze Mission Control, so make sure it resumed.
+sleep 1
+STATE="$(ps -o stat= -p "$DOCK_PID" | tr -d ' ')"
+if [[ "$STATE" == T* ]]; then
+    echo "WARNING: Dock is still suspended. Resuming it." >&2
+    kill -CONT "$DOCK_PID"
+fi
+
+echo
+echo "Done. Try a three-finger swipe or Control+Arrow."
 echo "Restore stock with: killall Dock"
