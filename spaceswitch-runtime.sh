@@ -10,9 +10,9 @@
 # Requires System Integrity Protection to be disabled, because a debugger
 # cannot otherwise attach to a platform binary.
 #
-#   sudo bash spaceswitch-runtime.sh 1      # instant
+#   sudo bash spaceswitch-runtime.sh 0      # instant
 #   sudo bash spaceswitch-runtime.sh 0.5    # half as long
-#   sudo bash spaceswitch-runtime.sh 0      # back to stock
+#   sudo bash spaceswitch-runtime.sh 1      # back to stock
 
 set -euo pipefail
 
@@ -22,7 +22,7 @@ SPEED="${1:-}"
 
 if [[ -z "$SPEED" ]]; then
     echo "usage: sudo bash $(basename "$0") <speed 0..1>" >&2
-    echo "       0 = stock macOS, 1 = instant" >&2
+    echo "       1 = stock macOS, 0 = instant" >&2
     exit 2
 fi
 

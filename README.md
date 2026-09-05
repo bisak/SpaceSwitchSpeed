@@ -10,9 +10,9 @@ Dock, and this tool rewrites them.
 sudo bash spaceswitch-runtime.sh 0.6
 ```
 
-The argument is a speed from 0 to 1. `0` is stock macOS, `1` is instant. Scaling
-is linear in duration, so the number is also the fraction of the animation
-removed.
+The argument is a speed from 0 to 1. `1` is stock macOS, `0` is instant. It is a
+straight multiplier on the stock duration, so the number is the fraction of the
+animation you keep.
 
 ## Requires SIP disabled
 

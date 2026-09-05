@@ -13,13 +13,14 @@ Both are `fmov d0, #0.25` immediates. This tool rewrites them together, so the
 two phases stay in step, and lets you pick any duration in between rather than
 only on or off.
 
-    --speed 0     stock macOS, 250 ms
+    --speed 1     stock macOS, 250 ms
     --speed 0.5   half as long, 125 ms
-    --speed 1     instant
+    --speed 0     instant
 
-Scaling is linear in duration, so the speed value is also the fraction of the
-animation removed. Durations shorter than one display frame are indistinguish-
-able from instant and only add latency, so they snap to zero.
+The value is a straight multiplier on the stock duration, so 1 leaves macOS
+alone and 0 removes the animation entirely. Durations shorter than one display
+frame are indistinguishable from instant and only add latency, so they snap to
+zero.
 
 The ARM64 `fmov` immediate cannot encode anything between 0 and 0.125 s, which
 is most of the useful range. For those values the tool rewrites the instruction
@@ -274,7 +275,7 @@ def main():
                     default="/System/Library/CoreServices/Dock.app/Contents/MacOS/Dock")
     g = ap.add_mutually_exclusive_group()
     g.add_argument("--speed", type=float, metavar="0..1",
-                   help="0 = stock macOS, 1 = instant")
+                   help="1 = stock macOS (default), 0 = instant")
     g.add_argument("--ms", type=float, metavar="MILLISECONDS",
                    help="set the duration directly")
     g.add_argument("--show", action="store_true",
@@ -306,7 +307,7 @@ def main():
     if args.speed is not None:
         if not 0.0 <= args.speed <= 1.0:
             raise SystemExit("--speed must be between 0 and 1")
-        target = STOCK_SECONDS * (1.0 - args.speed)
+        target = STOCK_SECONDS * args.speed
         asked = "speed %g" % args.speed
     else:
         target = args.ms / 1000.0
