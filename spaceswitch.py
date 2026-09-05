@@ -2,128 +2,80 @@
 """
 Space-switch speed control for macOS.
 
-macOS times the Space transition with two hardcoded 0.25 second constants in
-Dock, and exposes no preference for either:
+The Space transition has no duration. Dock animates it with a leaky integrator
+that runs on its own `space-switcher` dispatch queue:
 
-  transition   the duration Dock uses for its own Space transition
-  crossfade    the value Dock sends WindowServer over XPC as "xfade-duration",
-               which times the space transform and alpha blend
+    velocity = gain * (target - position) + A * velocity
+    position += timestep * velocity
 
-Both are `fmov d0, #0.25` immediates. This tool rewrites them together, so the
-two phases stay in step, and lets you pick any duration in between rather than
-only on or off.
+with gain = 2 and A = 0.695. Settling time is proportional to (1 - A), so
+lowering that term speeds the whole transition up proportionally. This is why
+macOS exposes no setting and why there is no constant to zero: the animation
+ends when the spring settles, not when a clock runs out.
 
-    --speed 1     stock macOS, 250 ms
-    --speed 0.5   half as long, 125 ms
-    --speed 0     instant
+    --speed 1     stock macOS
+    --speed 0.5   settles twice as fast
+    --speed 0.25  four times as fast
 
-The value is a straight multiplier on the stock duration, so 1 leaves macOS
-alone and 0 removes the animation entirely. Durations shorter than one display
-frame are indistinguishable from instant and only add latency, so they snap to
-zero.
+The value is a straight multiplier on settling time. It is clamped at the fast
+end, because A approaching 1 means momentum that never decays, which overshoots
+and oscillates instead of arriving.
 
-The ARM64 `fmov` immediate cannot encode anything between 0 and 0.125 s, which
-is most of the useful range. For those values the tool rewrites the instruction
-as a PC-relative `ldr d0, <literal>` and stores a full double in unused padding
-between __auth_stubs and __objc_stubs. Stock and instant use the compact
-encodings instead, so the smallest edit that expresses the value is the one
-applied.
+A is not an instruction immediate but a double in __TEXT,__const, loaded by
+`ldr d2, [x11, #0x5d0]`. Dock reads that same constant from four places, so
+overwriting it in place would also retime unrelated animations. Instead this
+repoints only the integrator's own load to eight unused bytes of inter-section
+padding and stores the chosen value there. Everything else keeps 0.695.
 
-Sites are located by the instructions that follow them, which the patch does not
-disturb. That makes the tool idempotent: it reads back whatever is currently
-installed and can move to any other value, including all the way back to stock.
+The integrator is found by a unique 32-byte signature of its inner loop, so the
+patch does not depend on fixed offsets.
 """
 
 import argparse
-import ctypes
-import ctypes.util
 import struct
-import subprocess
 import sys
 
 TEXT_VMBASE = 0x100000000
-STOCK_SECONDS = 0.25
 
-# Instruction encodings, little-endian words.
-MOVI_D0_ZERO = 0x2F00E400          # movi d0, #0
-FMOV_D0_BASE = 0x1E601000          # fmov d0, #<imm8>, Rd=0
-FMOV_D0_MASK = 0xFFE01FFF
-LDR_D0_BASE = 0x5C000000           # ldr d0, <pc-relative literal>
-LDR_D0_MASK = 0xFF00001F
+# Inner loop of the integrator: fsub / ldr / fmul / fadd / fadd / str / fmul / fadd.
+# Unique in the arm64e slice, and untouched by the patch.
+ANCHOR = bytes.fromhex(
+    "3338711e94aa40fd940a621e732a731e732a741e93aa00fd1409731e312a741e"
+)
+ANCHOR_TO_LDR = -0x38            # the `ldr d2, [x11, #imm]` sits 0x38 before it
 
-# Bytes that must follow each site. None matches any byte. These pin the two
-# call sites down uniquely and are never modified.
-SITES = {
-    "transition": (0xA8, None, None, 0xD1, None, 0x01, None, 0xF8),
-    "crossfade": (0xE0, 0x03, 0x13, 0xAA, 0xE1, 0x03, 0x15, 0xAA,
-                  0xF4, 0x03, 0x1B, 0xAA),
-}
+STOCK_A = 0.695                  # Apple's velocity-retention value
+GAIN = 2.0                       # hardcoded stiffness: `fadd d19, d19, d19`
+A_CEILING = 0.97                 # past here the ringing stops being subtle
 
-# Sixteen bytes of zero padding between __TEXT,__auth_stubs and
-# __TEXT,__objc_stubs. Within PC-relative literal reach of both sites.
-POOL_VMADDR = 0x100343010
-POOL_SIZE = 16
+LDR_FP64_BASE = 0xFD400000       # ldr dT, [xN, #imm12*8]
+LDR_FP64_MASK = 0xFFC00000
 
 
-# ---------------------------------------------------------------- encodings
-
-def fp_imm8_to_double(imm8):
-    """Expand an AArch64 8-bit floating-point immediate to its double value."""
-    a = (imm8 >> 7) & 1
-    b = (imm8 >> 6) & 1
-    c = (imm8 >> 5) & 1
-    d = (imm8 >> 4) & 1
-    efgh = imm8 & 0xF
-    exp = ((1 - b) << 10) | ((0xFF if b else 0) << 2) | (c << 1) | d
-    bits = (a << 63) | (exp << 52) | (efgh << 48)
-    return struct.unpack("<d", struct.pack("<Q", bits))[0]
-
-
-FMOV_TABLE = {}
-for _i in range(256):
-    FMOV_TABLE.setdefault(fp_imm8_to_double(_i), _i)
-
-
-def encode_fmov(value):
-    """Return the fmov word for value, or None if it is not representable."""
-    imm8 = FMOV_TABLE.get(value)
-    if imm8 is None:
+def ldr_fields(word):
+    """Decode ldr dT, [xN, #imm] -> (Rt, Rn, byte_offset), or None."""
+    if (word & LDR_FP64_MASK) != LDR_FP64_BASE:
         return None
-    return FMOV_D0_BASE | (imm8 << 13)
+    return word & 0x1F, (word >> 5) & 0x1F, ((word >> 10) & 0xFFF) * 8
 
 
-def encode_ldr(site_vmaddr, pool_vmaddr):
-    delta = pool_vmaddr - site_vmaddr
-    if delta % 4:
-        raise ValueError("literal is not 4-byte aligned relative to the site")
-    imm19 = delta >> 2
-    if not -(1 << 18) <= imm19 < (1 << 18):
-        raise ValueError("literal is out of PC-relative range")
-    return LDR_D0_BASE | ((imm19 & 0x7FFFF) << 5)
+def ldr_encode(rt, rn, byte_off):
+    if byte_off % 8 or not 0 <= byte_off // 8 < 4096:
+        raise ValueError("offset 0x%x not encodable" % byte_off)
+    return LDR_FP64_BASE | ((byte_off // 8) << 10) | (rn << 5) | rt
 
 
-def decode(word, site_vmaddr, pool_reader):
-    """Describe the instruction currently installed at a site.
+def adrp_page(word, pc):
+    """Decode adrp xN, <page> -> absolute page address."""
+    if (word & 0x9F000000) != 0x90000000:
+        return None
+    immlo = (word >> 29) & 3
+    immhi = (word >> 5) & 0x7FFFF
+    imm = (immhi << 2) | immlo
+    if imm & (1 << 20):
+        imm -= 1 << 21
+    return (pc & ~0xFFF) + (imm << 12)
 
-    Returns (seconds, form) where seconds is None if unrecognized.
-    """
-    if word == MOVI_D0_ZERO:
-        return 0.0, "movi"
-    if (word & FMOV_D0_MASK) == FMOV_D0_BASE:
-        return fp_imm8_to_double((word >> 13) & 0xFF), "fmov"
-    if (word & LDR_D0_MASK) == LDR_D0_BASE:
-        imm19 = (word >> 5) & 0x7FFFF
-        if imm19 & (1 << 18):
-            imm19 -= 1 << 19
-        target = site_vmaddr + imm19 * 4
-        raw = pool_reader(target, 8)
-        if raw is None:
-            return None, "ldr(unreadable)"
-        return struct.unpack("<d", raw)[0], "ldr"
-    return None, "unknown"
-
-
-# ------------------------------------------------------------------ Mach-O
 
 class DockImage:
     """The arm64 slice of a Dock binary, addressed by virtual address."""
@@ -133,6 +85,7 @@ class DockImage:
         with open(path, "rb") as fh:
             self.data = bytearray(fh.read())
         self.slice_off, self.slice_size = self._find_arm64()
+        self.sects = self._sections()
 
     def _find_arm64(self):
         magic, = struct.unpack(">I", self.data[:4])
@@ -141,213 +94,222 @@ class DockImage:
         count, = struct.unpack(">I", self.data[4:8])
         entry = 32 if magic == 0xCAFEBABF else 20
         for i in range(count):
-            base = 8 + i * entry
+            b = 8 + i * entry
             if magic == 0xCAFEBABF:
-                cpu, _s, off, size = struct.unpack(">IIQQ", self.data[base:base + 24])
+                cpu, _s, off, size = struct.unpack(">IIQQ", self.data[b:b + 24])
             else:
-                cpu, _s, off, size, _a = struct.unpack(">5I", self.data[base:base + 20])
+                cpu, _s, off, size, _a = struct.unpack(">5I", self.data[b:b + 20])
             if cpu == 0x0100000C:
                 return off, size
         raise SystemExit("no arm64 slice in %s" % self.path)
 
-    def file_off(self, vmaddr):
-        return self.slice_off + (vmaddr - TEXT_VMBASE)
+    def _sections(self):
+        m = self.data[self.slice_off:self.slice_off + self.slice_size]
+        ncmds, _sz = struct.unpack_from("<II", m, 16)
+        out, p = [], 32
+        for _ in range(ncmds):
+            cmd, cmdsize = struct.unpack_from("<II", m, p)
+            if cmd == 0x19:
+                nsects, = struct.unpack_from("<I", m, p + 64)
+                sp = p + 72
+                for _s in range(nsects):
+                    name = m[sp:sp + 16].rstrip(b"\0").decode()
+                    addr, size = struct.unpack_from("<QQ", m, sp + 32)
+                    out.append((name, addr, size))
+                    sp += 80
+            p += cmdsize
+        return sorted(out, key=lambda s: s[1])
 
-    def read(self, vmaddr, n):
-        o = self.file_off(vmaddr)
-        return bytes(self.data[o:o + n])
+    def off(self, vm):
+        return self.slice_off + (vm - TEXT_VMBASE)
 
-    def write(self, vmaddr, blob):
-        o = self.file_off(vmaddr)
-        self.data[o:o + len(blob)] = blob
+    def read(self, vm, n):
+        return bytes(self.data[self.off(vm):self.off(vm) + n])
 
-    def word(self, vmaddr):
-        return struct.unpack("<I", self.read(vmaddr, 4))[0]
+    def write(self, vm, blob):
+        self.data[self.off(vm):self.off(vm) + len(blob)] = blob
 
-    def find_sites(self):
-        """Locate each site by its trailing signature. Returns {name: vmaddr}."""
+    def word(self, vm):
+        return struct.unpack("<I", self.read(vm, 4))[0]
+
+    def find_ldr_site(self):
         body = bytes(self.data[self.slice_off:self.slice_off + self.slice_size])
-        out = {}
-        for name, suffix in SITES.items():
-            hits = []
-            for pos in range(0, len(body) - 4 - len(suffix), 4):
-                tail = body[pos + 4:pos + 4 + len(suffix)]
-                if all(w is None or tail[i] == w for i, w in enumerate(suffix)):
-                    word, = struct.unpack("<I", body[pos:pos + 4])
-                    known = (word == MOVI_D0_ZERO
-                             or (word & FMOV_D0_MASK) == FMOV_D0_BASE
-                             or (word & LDR_D0_MASK) == LDR_D0_BASE)
-                    if known:
-                        hits.append(TEXT_VMBASE + pos)
-            if len(hits) != 1:
-                raise SystemExit("%s: expected 1 site, found %d %s"
-                                 % (name, len(hits), [hex(h) for h in hits]))
-            out[name] = hits[0]
-        return out
+        hits = []
+        i = body.find(ANCHOR)
+        while i >= 0:
+            hits.append(TEXT_VMBASE + i)
+            i = body.find(ANCHOR, i + 4)
+        if len(hits) != 1:
+            raise SystemExit("integrator signature matched %d times; "
+                             "this build is not supported" % len(hits))
+        return hits[0] + ANCHOR_TO_LDR
+
+    def stock_slot(self, page, exclude):
+        """Locate Apple's own 0.695 constant, so a revert can point back at it."""
+        found = []
+        for a in range(page, page + 4096 * 8, 8):
+            if a == exclude:
+                continue
+            try:
+                v, = struct.unpack("<d", self.read(a, 8))
+            except struct.error:
+                break
+            if v == STOCK_A:
+                found.append(a)
+        return found[0] if len(found) == 1 else None
+
+    def free_slot(self, page, owned=None):
+        """Eight bytes in an inter-section gap reachable from `page`.
+
+        A slot already pointed at by the integrator (`owned`) counts as free:
+        it holds our previous value, so re-tuning must be able to reuse it.
+        """
+        window = range(page, page + 4096 * 8)
+        for (n1, a1, s1), (n2, a2, _s2) in zip(self.sects, self.sects[1:]):
+            gap_start, gap_end = a1 + s1, a2
+            slot = (gap_start + 7) & ~7
+            if slot + 8 > gap_end or slot not in window:
+                continue
+            if slot == owned or all(b == 0 for b in self.read(slot, 8)):
+                return slot, "%s -> %s" % (n1, n2)
+        return None, None
 
     def save(self, path=None):
         with open(path or self.path, "wb") as fh:
             fh.write(self.data)
 
 
-# ------------------------------------------------------------------- misc
+def response(a, refresh=120.0):
+    """Say whether the discrete system rings at this retention value.
 
-def refresh_hz():
-    """Main display refresh rate, or None when the system does not report one."""
-    try:
-        cg = ctypes.CDLL(ctypes.util.find_library("CoreGraphics"))
-        cg.CGMainDisplayID.restype = ctypes.c_uint32
-        cg.CGDisplayCopyDisplayMode.restype = ctypes.c_void_p
-        cg.CGDisplayCopyDisplayMode.argtypes = [ctypes.c_uint32]
-        cg.CGDisplayModeGetRefreshRate.restype = ctypes.c_double
-        cg.CGDisplayModeGetRefreshRate.argtypes = [ctypes.c_void_p]
-        mode = cg.CGDisplayCopyDisplayMode(cg.CGMainDisplayID())
-        if not mode:
-            return None
-        hz = cg.CGDisplayModeGetRefreshRate(mode)
-        return hz if hz > 0 else None
-    except Exception:
-        return None
+    e[n+1] = (1 - dt*G) e[n] - dt*A v[n];  v[n+1] = G e[n] + A v[n]
+    Characteristic roots are complex (oscillatory) when (1+A-dt*G)^2 < 4A.
+    Stock sits just barely on the non-oscillating side, so every speed-up
+    crosses over; what matters is how fast the ringing decays, |lambda| = sqrt(A).
+    """
+    tr = 1.0 + a - GAIN / refresh
+    disc = tr * tr - 4.0 * a
+    if disc >= 0:
+        return "no overshoot"
+    decay = a ** 0.5
+    kind = "subtle ringing" if decay < 0.965 else "visible ringing"
+    return "%s, decays %.1f%% per step" % (kind, (1 - decay) * 100)
 
 
-def ms(seconds):
-    return "%.1f ms" % (seconds * 1000.0)
+def describe(img, site):
+    """Return (damping, where, is_patched) for the current state."""
+    w = img.word(site)
+    f = ldr_fields(w)
+    if not f:
+        return None, "unrecognised instruction 0x%08x" % w, None
+    rt, rn, boff = f
+    page = adrp_page(img.word(site - 4), site - 4)
+    if page is None:
+        return None, "adrp not found before the load", None
+    addr = page + boff
+    val, = struct.unpack("<d", img.read(addr, 8))
+    return val, addr, addr
 
 
-# ------------------------------------------------------------------- plan
+def plan(img, site, target_a):
+    """Writes needed to install target_a. Returns (writes, note)."""
+    page = adrp_page(img.word(site - 4), site - 4)
+    rt, rn, cur_off = ldr_fields(img.word(site))
+    cur_addr = page + cur_off
 
-def build_plan(img, sites, target_seconds):
-    """Decide the instruction and pool writes needed to reach target_seconds."""
-    writes = []
-    if target_seconds == 0.0:
-        word = MOVI_D0_ZERO
-        form = "movi d0, #0"
-        pool = None
-    else:
-        word = encode_fmov(target_seconds)
-        if word is not None:
-            form = "fmov d0, #%g" % target_seconds
-            pool = None
-        else:
-            form = "ldr d0, <literal>"
-            pool = struct.pack("<d", target_seconds)
+    slot, gap = img.free_slot(page, owned=cur_addr)
 
-    for name, vmaddr in sorted(sites.items()):
-        w = encode_ldr(vmaddr, POOL_VMADDR) if pool is not None else word
-        writes.append((name, vmaddr, struct.pack("<I", w)))
+    if abs(target_a - STOCK_A) < 1e-12:
+        # Back to stock: point the load at Apple's constant and clear our slot.
+        stock = img.stock_slot(page, exclude=slot)
+        if cur_addr != slot:
+            return [], "already stock"
+        if stock is None:
+            raise SystemExit("could not locate Apple's 0.695 constant to revert to; "
+                             "restart Dock instead")
+        return ([(site, struct.pack("<I", ldr_encode(rt, rn, stock - page)), "load"),
+                 (slot, b"\0" * 8, "clear")],
+                "restoring the original constant at 0x%x" % stock)
 
-    # The slot is ours only if a site currently points at it.
-    owned = any(
-        (img.word(v) & LDR_D0_MASK) == LDR_D0_BASE for v in sites.values()
-    )
+    if slot is None:
+        raise SystemExit("no reachable padding slot for the constant")
+    writes = [(slot, struct.pack("<d", target_a), "damping"),
+              (site, struct.pack("<I", ldr_encode(rt, rn, slot - page)), "load")]
+    return writes, "slot 0x%x in padding (%s)" % (slot, gap)
 
-    pool_write = None
-    if pool is not None:
-        current = img.read(POOL_VMADDR, POOL_SIZE)
-        if not owned and any(b != 0 for b in current):
-            raise SystemExit(
-                "the literal slot at 0x%x is not empty and was not written by this "
-                "tool; refusing to reuse it" % POOL_VMADDR)
-        pool_write = (POOL_VMADDR, pool + b"\0" * (POOL_SIZE - len(pool)))
-    elif owned:
-        # Moving to an encoding that needs no literal. Hand the padding back so
-        # returning to stock leaves the binary byte-identical to Apple's.
-        pool_write = (POOL_VMADDR, b"\0" * POOL_SIZE)
-    return writes, pool_write, form
-
-
-def report_current(img, sites):
-    reader = lambda a, n: img.read(a, n)
-    rows = []
-    for name, vmaddr in sorted(sites.items()):
-        secs, form = decode(img.word(vmaddr), vmaddr, reader)
-        rows.append((name, vmaddr, secs, form))
-    return rows
-
-
-# ------------------------------------------------------------------- main
 
 def main():
     ap = argparse.ArgumentParser(
-        description=__doc__,
-        formatter_class=argparse.RawDescriptionHelpFormatter)
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--binary",
                     default="/System/Library/CoreServices/Dock.app/Contents/MacOS/Dock")
     g = ap.add_mutually_exclusive_group()
     g.add_argument("--speed", type=float, metavar="0..1",
-                   help="1 = stock macOS (default), 0 = instant")
-    g.add_argument("--ms", type=float, metavar="MILLISECONDS",
-                   help="set the duration directly")
-    g.add_argument("--show", action="store_true",
-                   help="report what is currently installed")
-    ap.add_argument("--apply", action="store_true",
-                    help="write the change (default is a dry run)")
-    ap.add_argument("--output", help="write to this path instead of in place")
+                   help="1 = stock macOS, lower = faster settle")
+    g.add_argument("--damping", type=float, metavar="A",
+                   help="set the retention constant A directly (advanced)")
+    g.add_argument("--show", action="store_true")
+    ap.add_argument("--apply", action="store_true", help="write it (default: dry run)")
+    ap.add_argument("--output")
     ap.add_argument("--emit-lldb", action="store_true",
-                    help="print memory writes for patching a running Dock")
+                    help="print writes for the runtime patcher")
     args = ap.parse_args()
 
     img = DockImage(args.binary)
-    sites = img.find_sites()
-
-    hz = refresh_hz()
-    frame = 1.0 / hz if hz else None
+    site = img.find_ldr_site()
+    cur, addr, _ = describe(img, site)
 
     print("Dock: %s" % args.binary)
-    for name, vmaddr, secs, form in report_current(img, sites):
-        shown = "unrecognized" if secs is None else ms(secs)
-        print("  %-11s 0x%x  %-14s %s" % (name, vmaddr, shown, form))
+    print("  integrator load  0x%x -> constant at 0x%x" % (site, addr))
+    if cur is None:
+        print("  state            %s" % addr)
+        return 1
+    eff = (1 - cur) / (1 - STOCK_A)
+    print("  retention A      %.6f   (settling x%.2f vs stock)" % (cur, eff))
+    print("  response         %s" % response(cur))
 
-    if args.show or (args.speed is None and args.ms is None):
-        if hz:
-            print("\nDisplay refreshes at %.4g Hz, one frame is %s." % (hz, ms(frame)))
-        print("\nNothing requested. Use --speed 0..1 or --ms.")
+    if args.show or (args.speed is None and args.damping is None):
+        print("\nNothing requested. Use --speed 0..1 or --damping A.")
         return 0
 
-    if args.speed is not None:
+    if args.damping is not None:
+        target = args.damping
+        if not 0.0 <= target < 1.0:
+            raise SystemExit("--damping must be in [0, 1)")
+        asked = "damping %g" % target
+    else:
         if not 0.0 <= args.speed <= 1.0:
             raise SystemExit("--speed must be between 0 and 1")
-        target = STOCK_SECONDS * args.speed
+        target = 1.0 - (1.0 - STOCK_A) * args.speed
         asked = "speed %g" % args.speed
-    else:
-        target = args.ms / 1000.0
-        if target < 0:
-            raise SystemExit("--ms must not be negative")
-        asked = "%g ms" % args.ms
 
     note = ""
-    if frame and 0 < target < frame:
-        note = " (below one %s frame, snapped to instant)" % ms(frame).strip()
-        target = 0.0
+    if target > A_CEILING:
+        target = A_CEILING
+        note = " (clamped at A=%.2f; beyond this the spring overshoots)" % A_CEILING
 
-    print("\nRequested %s -> %s%s" % (asked, ms(target), note))
+    got = (1 - target) / (1 - STOCK_A)
+    print("\nRequested %s -> damping %.6f, settling x%.2f vs stock%s"
+          % (asked, target, got, note))
 
-    writes, pool_write, form = build_plan(img, sites, target)
-    print("Encoding : %s" % form)
-
-    for name, vmaddr, blob in writes:
-        print("  %-11s 0x%x <- %s" % (name, vmaddr, blob.hex(" ")))
-    if pool_write:
-        print("  %-11s 0x%x <- %s" % ("literal", pool_write[0],
-                                      pool_write[1][:8].hex(" ")))
+    writes, where = plan(img, site, target)
+    if not writes:
+        print("Nothing to write (%s)." % where)
+        return 0
+    print("Storage  : %s" % where)
+    for vm, blob, what in writes:
+        print("  %-8s 0x%x <- %s" % (what, vm, blob.hex(" ")))
 
     if args.emit_lldb:
-        # Machine-readable plan for the runtime patcher: one
-        # "WRITE <offset-from-image-base> <hex>" line per edit.
-        for _n, vmaddr, blob in writes:
-            print("WRITE %#x %s" % (vmaddr - TEXT_VMBASE, blob.hex()))
-        if pool_write:
-            print("WRITE %#x %s" % (pool_write[0] - TEXT_VMBASE,
-                                    pool_write[1].hex()))
+        for vm, blob, _w in writes:
+            print("WRITE %#x %s" % (vm - TEXT_VMBASE, blob.hex()))
 
     if not args.apply:
         print("\nDry run. Re-run with --apply to write.")
         return 0
 
-    for _n, vmaddr, blob in writes:
-        img.write(vmaddr, blob)
-    if pool_write:
-        img.write(pool_write[0], pool_write[1])
+    for vm, blob, _w in writes:
+        img.write(vm, blob)
     img.save(args.output)
     print("\nWrote %s" % (args.output or args.binary))
     return 0

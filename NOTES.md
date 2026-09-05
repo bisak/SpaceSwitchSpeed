@@ -1,5 +1,67 @@
 # Reverse-engineering notes
 
+## Correction: the first answer was wrong
+
+The two `fmov d0, #0.25` constants documented below are real, and one genuinely
+becomes `xfade-duration` over XPC. They are **not** what times the Space switch.
+Breakpoints on both showed **zero hits** across confirmed Space switches, while
+`SLSTransactionSetSpaceTransform` fired ~700 times. Patching them to any value,
+including zero, changed nothing on screen.
+
+The lesson: byte-level verification only proves the intended bytes changed. It
+says nothing about whether the code runs. Every claim below that came from
+static reading alone should be treated as a hypothesis until a breakpoint
+confirms it.
+
+## What actually drives the transition
+
+Dock animates the Space transition itself on a dispatch queue literally named
+`space-switcher-<uuid>`, stepping a leaky integrator:
+
+```
+velocity = gain * (target - position) + A * velocity     gain = 2, A = 0.695
+position += timestep * velocity
+```
+
+| element | address | notes |
+|---|---|---|
+| integrator inner loop | `0x100150f2c` | 32-byte signature, unique in the slice |
+| gain (`fadd d19,d19,d19`) | `0x100150f38` | stiffness, hardcoded x2 |
+| `ldr d2, [x11, #0x5d0]` | `0x100150ef4` | loads A; the patch site |
+| A = 0.695 | `0x10036f5d0` | in `__TEXT,__const`, read from 4 places |
+| settle epsilon 0.01 | `0x10036f250` | terminates on low velocity |
+| velocity normaliser | `0x1001509ec` | release velocity / width -> `[x20+0x150]` |
+| velocity field | `[x20+0x150]` | read+written each step |
+
+Confirmed by backtrace: `SLSTransactionSetSpaceTransform` <- `Dock+0x150354` <-
+`0x14fc3c` <- `0x14fb00` <- `0x289628` <- `0x289544`, on the `space-switcher`
+queue, driven by a dispatch source.
+
+Progress reaches the stepper bit-punned through the dispatch source's `data`
+field (`0x1003130b4` is `DispatchSource.data`, reinterpreted as a double).
+
+### Why there is no duration
+
+A spring has no duration; it has a convergence rate. Settling time is
+proportional to `1 - A`. That is the whole reason no preference exists and no
+constant can be zeroed.
+
+### Stability
+
+The discrete system is second order:
+
+```
+e[n+1] = (1 - dt*G) e[n] - dt*A v[n]
+v[n+1] = G e[n] + A v[n]
+```
+
+Roots are complex when `(1 + A - dt*G)^2 < 4A`. At stock the discriminant is
+`+0.037`, just barely non-oscillating, so every speed-up rings; `sqrt(A)` per
+step sets how fast the ringing decays. Scaling `dt` alone does nothing, because
+the substep count is `elapsed/dt` — the integrator is correctly fixed-step.
+
+---
+
 Target: `/System/Library/CoreServices/Dock.app/Contents/MacOS/Dock`, arm64e slice
 at file offset `0x530000`, macOS 26.6.2 build 25G83. Virtual addresses below are
 as linked, with `__TEXT` at `0x100000000`.

@@ -1,128 +1,88 @@
 # macos-spaceswitch
 
-Set how long the macOS Space-switch animation takes. Covers both the three-finger
-swipe and Control+Arrow, on a continuous scale from stock to instant.
+Make the macOS Space transition faster. Covers the three-finger swipe and
+Control+Arrow, continuously adjustable rather than on/off.
 
-macOS exposes no setting for this. The duration is two hardcoded constants inside
-Dock, and this tool rewrites them.
+Confirmed working on macOS 26.6.2 (25G83), Apple Silicon.
 
 ```
-sudo bash spaceswitch-runtime.sh 0.6
+bash spaceswitch-runtime.sh 0.25
 ```
 
-The argument is a speed from 0 to 1. `1` is stock macOS, `0` is instant. It is a
-straight multiplier on the stock duration, so the number is the fraction of the
-animation you keep.
+The argument is a multiplier on settling time. `1` is stock, `0.25` settles four
+times as fast. `0.25`–`0.5` is the useful range; see Ringing below.
 
 ## Requires SIP disabled
 
-There is no way around this. The constants live inside a signed platform binary,
-so reaching them means either attaching a debugger to Dock or editing a file on
-the sealed system volume. Both need System Integrity Protection off.
+The constants live inside a signed platform binary, so a debugger has to attach
+to Dock. Disable System Integrity Protection from Recovery with `csrutil
+disable`. Root is not required afterwards, since Dock runs as you.
 
-Disable it from Recovery with `csrutil disable`, then reboot. This lowers the
-security of the machine. It is a real tradeoff, not a formality.
-
-Reduce Motion is **not** a substitute. Both constants are unconditional
-immediates with no reduce-motion branch anywhere near them. Reduce Motion changes
-what WindowServer draws, not how long it takes.
-
-## Usage
-
-Inspect what is currently installed. Reads only, safe with SIP on:
-
-```
-./spaceswitch.py --show
-```
-
-Preview a change without writing anything:
-
-```
-./spaceswitch.py --speed 0.6
-```
-
-Apply to the running Dock. Nothing on disk changes, and `killall Dock` restores
-stock behaviour:
-
-```
-sudo bash spaceswitch-runtime.sh 0.6
-```
-
-Set an exact duration instead of a speed:
-
-```
-./spaceswitch.py --ms 90
-```
-
-Patch the file on disk for a persistent change. See the warning below:
-
-```
-sudo ./spaceswitch.py --speed 0.6 --apply
-```
-
-## Which method to use
-
-Prefer the runtime patch. Dock keeps its genuine Apple signature and its private
-entitlements, the sealed volume is untouched, and a reboot undoes everything.
-
-The on-disk patch survives reboots but is not recommended. Editing the file
-invalidates Dock's signature, and re-signing ad-hoc makes AMFI deny the
-`com.apple.private.SkyLight.*` entitlements Dock depends on. It also needs
-Authenticated Root disabled and a freshly blessed snapshot, and every macOS
-update reverts it.
+Reduce Motion is not a substitute and does not affect this.
 
 ## How it works
 
-Dock holds two separate 0.25 second constants in the Space-switch path:
+There is no duration to change. Dock animates the transition with a leaky
+integrator on its own `space-switcher` dispatch queue:
 
-| name | what it times |
-|---|---|
-| `transition` | the duration Dock uses for its own Space transition |
-| `crossfade` | sent to WindowServer over XPC as `xfade-duration`, timing the space transform and alpha blend |
+```
+velocity = gain × (target − position) + A × velocity      gain = 2, A = 0.695
+position += timestep × velocity
+```
 
-Both are `fmov d0, #0.25` immediates. The tool rewrites them together so the two
-phases stay in step. Patching only the first, which is what yabai's scripting
-addition does, leaves the crossfade running.
+It ends when the spring settles, not when a clock expires, which is why macOS
+ships no setting and why there is no constant to zero out. Settling time is
+proportional to `1 − A`, so the tool scales that term. `--speed` is a straight
+multiplier on settling time.
 
-The ARM64 `fmov` immediate cannot encode anything between 0 and 0.125 seconds,
-which is most of the useful range. So the tool picks the smallest encoding that
-expresses the value exactly:
+`A` is a double in `__TEXT,__const`, loaded by `ldr d2, [x11, #0x5d0]`. Dock
+reads that same constant from four places, so overwriting it would retime
+unrelated animations. Instead the tool repoints only the integrator's own load
+to eight unused bytes of padding between `__objc_methlist` and `__const`, and
+writes the chosen value there. Everything else keeps `0.695`.
 
-- **stock** restores Apple's original bytes
-- **instant** becomes `movi d0, #0`
-- **anything else** becomes a PC-relative `ldr d0, <literal>`, with the double
-  stored in 16 bytes of zero padding between `__auth_stubs` and `__objc_stubs`
+The integrator is located by a unique 32-byte signature of its inner loop, not a
+fixed offset, so the patch is not tied to one build. Reverting restores the
+original load and clears the slot, leaving the binary byte-identical to Apple's.
 
-Returning to stock hands that padding back, so the binary ends up byte-identical
-to Apple's.
+## Ringing
 
-Durations shorter than one display frame are indistinguishable from instant and
-only add latency, so they snap to zero. The frame time comes from the main
-display's actual refresh rate.
+`A` is velocity *retention*, so `1 − A` is the damping term. Raising the speed
+therefore also lowers damping — the knob is not orthogonal.
 
-Call sites are found by the instructions that follow them, which the patch never
-touches. That makes the tool idempotent: it reads back whatever is installed and
-can move to any other value, including all the way back to stock, without
-reverting first. It refuses to run if a signature does not match exactly once, or
-if anything it did not write is sitting in the literal slot.
+| speed | A | behaviour |
+|---|---|---|
+| 1 (stock) | 0.695 | no overshoot |
+| 0.5 | 0.8475 | subtle ringing |
+| 0.25 | 0.9238 | subtle ringing |
+| 0.1 | 0.9695 | visible ringing |
 
-See [NOTES.md](NOTES.md) for the reverse-engineering detail, including the
-constants that look relevant but are not.
+Stock sits just barely on the non-oscillating side, so any speed-up crosses into
+oscillation. What matters is how fast it decays (`√A` per step), which is why
+0.25 looks clean and 0.1 does not. Values are clamped at `A = 0.97`.
 
-## Compatibility
+Making speed independent of damping would mean scaling the gain too. That is the
+hardcoded `fadd d19, d19, d19`, so it needs an instruction rewrite and a second
+constant slot. Not currently done.
 
-Verified on macOS 26.6.2, build 25G83, arm64e. Because sites are located by byte
-signature rather than fixed offset, point releases that shift code around should
-still work. A release that changes the surrounding instructions will not, and the
-tool will say so rather than write to the wrong place.
+## Usage
 
-Apple Silicon only. The Intel slice is not handled.
+```
+./spaceswitch.py --show              # read current state (safe with SIP on)
+./spaceswitch.py --speed 0.25        # preview
+bash spaceswitch-runtime.sh 0.25     # apply to the running Dock
+bash spaceswitch-runtime.sh 1        # back to stock
+./spaceswitch.py --damping 0.9       # set A directly
+```
 
-## Status
+The runtime patch touches memory only. `killall Dock` reverts it, and it does
+not survive a reboot. Patching the file on disk with `--apply` persists but
+breaks Dock's signature and costs it the private entitlements it needs; it also
+requires Authenticated Root disabled. Not recommended.
 
-The byte-level behaviour is verified against a copy of the Dock binary: both
-sites resolve uniquely, every encoding disassembles correctly, arbitrary values
-round-trip, and returning to stock is byte-identical.
+## History
 
-The on-screen result is not verified. That needs SIP disabled, which was not the
-case on the machine this was written on.
+The first version of this tool patched two `fmov d0, #0.25` constants, one of
+which Dock sends WindowServer as `xfade-duration`. They looked convincing and
+did nothing: breakpoints showed zero hits during real Space switches. They belong
+to a different transition. See [NOTES.md](NOTES.md).
