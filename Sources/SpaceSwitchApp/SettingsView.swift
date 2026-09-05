@@ -7,34 +7,132 @@ import SpaceSwitchKit
 
 struct SettingsView: View {
     @ObservedObject var controller: Controller
+    @State private var showingOptions = false
 
     var body: some View {
         Form {
             Section {
                 LabeledContent("Switching speed") {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Slider(value: $controller.stop,
-                               in: 0 ... Double(Speed.presets.count - 1),
-                               step: 1) { editing in
-                            if !editing { controller.commit() }
+                    HStack(spacing: 10) {
+                        // Tinting the whole row would override the slider's
+                        // accent fill, so the glyphs are styled on their own.
+                        Image(systemName: "tortoise.fill")
+                            .foregroundStyle(.secondary)
+                        // Passing `step:` selects NSSlider's tick-mark style,
+                        // which has a rectangular knob and a hairline track.
+                        // System Settings draws its own dots under a plain
+                        // slider instead, which is what this reproduces.
+                        VStack(spacing: 3) {
+                            Slider(value: snappedStop,
+                                   in: 0 ... Double(Speed.presets.count - 1)) { editing in
+                                if !editing { controller.commit() }
+                            }
+                            TickMarks(count: Speed.presets.count)
                         }
-                        HStack {
-                            Text(Speed.presets.first?.name ?? "")
-                            Spacer()
-                            Text(Speed.presets.last?.name ?? "")
-                        }
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        Image(systemName: "hare.fill")
+                            .foregroundStyle(.secondary)
                     }
-                    .frame(width: 260)
+                    .imageScale(.large)
+                    .frame(width: 270)
                     .disabled(!controller.isEditable)
-                    .padding(.vertical, 8)
                 }
             } footer: {
-                if let note = controller.note { NoteView(note: note) }
+                VStack(alignment: .leading, spacing: 10) {
+                    if let note = controller.note { NoteView(note: note) }
+                    HStack {
+                        Spacer()
+                        Button("Options…") { showingOptions = true }
+                            .disabled(!controller.isEditable)
+                    }
+                }
             }
         }
         .formStyle(.grouped)
+        .sheet(isPresented: $showingOptions) { OptionsSheet(controller: controller) }
+    }
+
+    private var snappedStop: Binding<Double> {
+        Binding(get: { controller.stop },
+                set: { controller.stop = $0.rounded() })
+    }
+}
+
+/// The dots System Settings draws beneath a stepped slider. They line up with
+/// the knob's travel, which is inset from the track by half the knob's width.
+private struct TickMarks: View {
+    let count: Int
+    private let knobRadius: CGFloat = 10
+
+    var body: some View {
+        GeometryReader { geometry in
+            let span = geometry.size.width - knobRadius * 2
+            ForEach(0 ..< count, id: \.self) { index in
+                Circle()
+                    .fill(.tertiary)
+                    .frame(width: 3, height: 3)
+                    .position(x: knobRadius + span * CGFloat(index) / CGFloat(count - 1), y: 1.5)
+            }
+        }
+        .frame(height: 3)
+    }
+}
+
+/// Damping, kept behind a button because changing it is a matter of taste and
+/// the automatic value is right for almost everyone.
+private struct OptionsSheet: View {
+    @ObservedObject var controller: Controller
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var automatic: Bool
+    @State private var damping: Double
+
+    init(controller: Controller) {
+        self.controller = controller
+        _automatic = State(initialValue: controller.damping == nil)
+        _damping = State(initialValue: controller.effectiveDamping)
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Form {
+                Section {
+                    Toggle("Set damping automatically", isOn: $automatic)
+                    LabeledContent("Damping") {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Slider(value: $damping, in: 0.6 ... 1.6)
+                            HStack {
+                                Text("Springy")
+                                Spacer()
+                                Text("Smooth")
+                            }
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        }
+                        .frame(width: 240)
+                        .disabled(automatic)
+                    }
+                }
+            }
+            .formStyle(.grouped)
+
+            Divider()
+            HStack {
+                Spacer()
+                Button("Cancel") { dismiss() }
+                    .keyboardShortcut(.cancelAction)
+                Button("OK") {
+                    controller.setDamping(automatic ? nil : damping)
+                    dismiss()
+                }
+                .keyboardShortcut(.defaultAction)
+            }
+            .padding(16)
+        }
+        .frame(width: 460)
+        .fixedSize(horizontal: false, vertical: true)
+        .onChange(of: automatic) { isAutomatic in
+            if isAutomatic { damping = controller.model.damping(forSpeed: Speed.presets[Int(controller.stop)].value) }
+        }
     }
 }
 
