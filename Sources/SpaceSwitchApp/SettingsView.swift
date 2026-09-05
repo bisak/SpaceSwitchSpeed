@@ -18,22 +18,14 @@ struct SettingsView: View {
                         // accent fill, so the glyphs are styled on their own.
                         Image(systemName: "tortoise.fill")
                             .foregroundStyle(.secondary)
-                        // Passing `step:` selects NSSlider's tick-mark style,
-                        // which has a rectangular knob and a hairline track.
-                        // System Settings draws its own dots under a plain
-                        // slider instead, which is what this reproduces.
-                        VStack(spacing: 3) {
-                            Slider(value: snappedStop,
-                                   in: 0 ... Double(Speed.presets.count - 1)) { editing in
-                                if !editing { controller.commit() }
-                            }
-                            TickMarks(count: Speed.presets.count)
-                        }
+                        SteppedSlider(value: $controller.stop,
+                                      stops: Speed.presets.count) { controller.commit() }
                         Image(systemName: "hare.fill")
                             .foregroundStyle(.secondary)
                     }
                     .imageScale(.large)
                     .frame(width: 270)
+                    .padding(.vertical, 4)
                     .disabled(!controller.isEditable)
                 }
             } footer: {
@@ -49,31 +41,6 @@ struct SettingsView: View {
         }
         .formStyle(.grouped)
         .sheet(isPresented: $showingOptions) { OptionsSheet(controller: controller) }
-    }
-
-    private var snappedStop: Binding<Double> {
-        Binding(get: { controller.stop },
-                set: { controller.stop = $0.rounded() })
-    }
-}
-
-/// The dots System Settings draws beneath a stepped slider. They line up with
-/// the knob's travel, which is inset from the track by half the knob's width.
-private struct TickMarks: View {
-    let count: Int
-    private let knobRadius: CGFloat = 10
-
-    var body: some View {
-        GeometryReader { geometry in
-            let span = geometry.size.width - knobRadius * 2
-            ForEach(0 ..< count, id: \.self) { index in
-                Circle()
-                    .fill(.tertiary)
-                    .frame(width: 3, height: 3)
-                    .position(x: knobRadius + span * CGFloat(index) / CGFloat(count - 1), y: 1.5)
-            }
-        }
-        .frame(height: 3)
     }
 }
 
