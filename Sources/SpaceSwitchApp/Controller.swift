@@ -27,7 +27,7 @@ final class Controller: ObservableObject {
     }
 
     private var committed: Double
-    private var poll: Timer?
+    private var poll: Task<Void, Never>?
 
     init() {
         let config = Configuration.load()
@@ -39,12 +39,15 @@ final class Controller: ObservableObject {
 
         if !SystemIntegrityProtection.isDisabled { note = .needsSIPDisabled }
 
-        poll = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
-            Task { @MainActor in self?.checkForTrouble() }
+        poll = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(2))
+                self?.checkForTrouble()
+            }
         }
     }
 
-    deinit { poll?.invalidate() }
+    deinit { poll?.cancel() }
 
     var isEditable: Bool { note != .needsSIPDisabled && !busy }
 
@@ -68,13 +71,12 @@ final class Controller: ObservableObject {
         let target = stop
 
         guard HelperInstall.isInstalled else {
-            authorise { [weak self] succeeded in
-                guard let self else { return }
-                if succeeded {
-                    self.write(target)
-                    self.committed = target
+            Task {
+                if await authorise() {
+                    write(target)
+                    committed = target
                 } else {
-                    self.stop = self.committed
+                    stop = committed
                 }
             }
             return
@@ -98,35 +100,51 @@ final class Controller: ObservableObject {
         }
     }
 
+    private enum Outcome: Sendable { case installed, cancelled, failed }
+
     /// Installs the background job. macOS shows its own authorisation prompt, so
     /// the app never asks for a password itself.
-    private func authorise(completion: @escaping (Bool) -> Void) {
+    private func authorise() async -> Bool {
         guard let tool = Self.commandLineTool() else {
             note = .failed("SpaceSwitch is missing part of itself. Reinstall it.")
-            return completion(false)
+            return false
         }
         busy = true
-        Task.detached {
-            let escaped = tool.path.replacingOccurrences(of: "\"", with: "\\\"")
-            let process = Process()
-            process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
-            process.arguments = ["-e", "do shell script \"'\(escaped)' install\" with administrator privileges"]
-            let pipe = Pipe()
-            process.standardError = pipe
-            process.standardOutput = Pipe()
-            try? process.run()
-            let errorText = String(decoding: pipe.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
-            process.waitUntilExit()
-            let code = process.terminationStatus
+        defer { busy = false }
 
-            await MainActor.run {
-                self.busy = false
-                if code == 0 {
-                    completion(true)
+        switch await Self.runInstaller(at: tool) {
+        case .installed: return true
+        case .cancelled: return false
+        case .failed:
+            note = .failed("Could not start SpaceSwitch.")
+            return false
+        }
+    }
+
+    /// Runs off the main actor: the authorisation prompt blocks until answered.
+    private nonisolated static func runInstaller(at tool: URL) async -> Outcome {
+        await withCheckedContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async {
+                let escaped = tool.path.replacingOccurrences(of: "\"", with: "\\\"")
+                let process = Process()
+                process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+                process.arguments = [
+                    "-e", "do shell script \"'\(escaped)' install\" with administrator privileges",
+                ]
+                let pipe = Pipe()
+                process.standardError = pipe
+                process.standardOutput = Pipe()
+                guard (try? process.run()) != nil else {
+                    return continuation.resume(returning: .failed)
+                }
+                let errorText = String(decoding: pipe.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+                process.waitUntilExit()
+
+                if process.terminationStatus == 0 {
+                    continuation.resume(returning: .installed)
                 } else {
                     // -128 is the user dismissing the authorisation prompt.
-                    if !errorText.contains("-128") { self.note = .failed("Could not start SpaceSwitch.") }
-                    completion(false)
+                    continuation.resume(returning: errorText.contains("-128") ? .cancelled : .failed)
                 }
             }
         }

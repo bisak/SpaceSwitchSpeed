@@ -70,9 +70,9 @@ for (points, scale) in [(16, 1), (16, 2), (32, 1), (32, 2), (128, 1), (128, 2), 
 
 let convert = Process()
 convert.executableURL = URL(fileURLWithPath: "/usr/bin/iconutil")
-convert.arguments = ["-c", "icns", iconset.path, "-o", "Sources/SpaceSwitchApp/Resources/AppIcon.icns"]
+convert.arguments = ["-c", "icns", iconset.path, "-o", "Resources/AppIcon.icns"]
 try FileManager.default.createDirectory(
-    at: URL(fileURLWithPath: "Sources/SpaceSwitchApp/Resources"), withIntermediateDirectories: true)
+    at: URL(fileURLWithPath: "Resources"), withIntermediateDirectories: true)
 try convert.run()
 convert.waitUntilExit()
-print(convert.terminationStatus == 0 ? "wrote Sources/SpaceSwitchApp/Resources/AppIcon.icns" : "iconutil failed")
+print(convert.terminationStatus == 0 ? "wrote Resources/AppIcon.icns" : "iconutil failed")

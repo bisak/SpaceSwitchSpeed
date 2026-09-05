@@ -110,7 +110,7 @@ func format(_ status: Status) -> String {
     return lines.joined(separator: "\n")
 }
 
-func emit(_ status: Status) {
+func emit(_ status: Status, json: Bool) {
     if json {
         let payload: [String: Any] = [
             "applied": status.applied, "speed": status.speed, "damping": status.damping,
@@ -168,7 +168,7 @@ do {
         }
 
     case "status":
-        emit(try Engine(refreshHz: refreshArg).status())
+        emit(try Engine(refreshHz: refreshArg).status(), json: json)
 
     case "revert":
         let engine = try Engine(refreshHz: refreshArg)
@@ -207,7 +207,7 @@ do {
 
     default:
         guard let speed = speedArg else {
-            emit(try Engine(refreshHz: refreshArg).status())
+            emit(try Engine(refreshHz: refreshArg).status(), json: json)
             exit(0)
         }
         guard Speed.range.contains(speed) else {
@@ -232,7 +232,7 @@ do {
         config.damping = dampingArg
         config.lastKnownRefreshHz = status.refreshHz
         try? config.save()
-        emit(status)
+        emit(status, json: json)
     }
 } catch let error as SpaceSwitchError {
     fail(error.description)

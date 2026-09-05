@@ -13,6 +13,7 @@ import SwiftUI
 /// uses a plain slider with its own marks below, so this does the same —
 /// snapping in the action so the knob moves stop to stop while dragging, rather
 /// than only on release as a rounded SwiftUI binding would.
+@MainActor
 final class SteppedSliderView: NSView {
     let slider: NSSlider
     private let stops: Int
@@ -95,6 +96,9 @@ struct SteppedSlider: NSViewRepresentable {
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
+    /// AppKit delivers control actions on the main thread. Saying so explicitly
+    /// keeps this compiling under toolchains that do not infer it.
+    @MainActor
     final class Coordinator: NSObject {
         var parent: SteppedSlider
 

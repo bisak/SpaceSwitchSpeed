@@ -1,4 +1,4 @@
-// swift-tools-version:5.9
+// swift-tools-version:6.0
 import PackageDescription
 
 let package = Package(
@@ -10,13 +10,14 @@ let package = Package(
         .executable(name: "SpaceSwitchApp", targets: ["SpaceSwitchApp"]),
     ],
     targets: [
-        .target(name: "SpaceSwitchKit"),
-        .executableTarget(name: "spaceswitch", dependencies: ["SpaceSwitchKit"]),
-        .executableTarget(
-            name: "SpaceSwitchApp",
-            dependencies: ["SpaceSwitchKit"],
-            linkerSettings: [.unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks"])]
-        ),
-        .testTarget(name: "SpaceSwitchKitTests", dependencies: ["SpaceSwitchKit"]),
+        .target(name: "SpaceSwitchKit", swiftSettings: .strict),
+        .executableTarget(name: "spaceswitch", dependencies: ["SpaceSwitchKit"], swiftSettings: .strict),
+        .executableTarget(name: "SpaceSwitchApp", dependencies: ["SpaceSwitchKit"], swiftSettings: .strict),
+        .testTarget(name: "SpaceSwitchKitTests", dependencies: ["SpaceSwitchKit"], swiftSettings: .strict),
     ]
 )
+
+extension [SwiftSetting] {
+    /// Swift 6 language mode: data-race safety is checked at compile time.
+    static var strict: [SwiftSetting] { [.swiftLanguageMode(.v6)] }
+}

@@ -12,7 +12,29 @@ BUNDLE_ID="com.bisak.spaceswitch"
 OUT="${OUT:-build}"
 APP="$OUT/SpaceSwitch.app"
 
-echo "Building $CONFIG…"
+# macOS decides which control appearance an app gets from the SDK it was linked
+# against, so building with an SDK older than the running system makes a native
+# app look a release behind. The newest SDK is often in the Command Line Tools
+# rather than in whatever `xcode-select` points at.
+if [ -z "${DEVELOPER_DIR:-}" ]; then
+    best_dir=""; best_sdk=0
+    for dir in "$(xcode-select -p 2>/dev/null)" /Library/Developer/CommandLineTools \
+               /Applications/Xcode*.app/Contents/Developer; do
+        [ -d "$dir" ] || continue
+        sdk="$(DEVELOPER_DIR="$dir" xcrun --show-sdk-version 2>/dev/null | cut -d. -f1)"
+        case "$sdk" in ''|*[!0-9]*) continue ;; esac
+        if [ "$sdk" -gt "$best_sdk" ]; then best_sdk="$sdk"; best_dir="$dir"; fi
+    done
+    [ -n "$best_dir" ] && export DEVELOPER_DIR="$best_dir"
+
+    os_major="$(sw_vers -productVersion | cut -d. -f1)"
+    if [ "$best_sdk" -lt "$os_major" ]; then
+        echo "warning: newest macOS SDK is $best_sdk but this system is $os_major;" >&2
+        echo "         the app will be drawn with older system controls." >&2
+    fi
+fi
+echo "Building $CONFIG with SDK $(xcrun --show-sdk-version) from ${DEVELOPER_DIR:-$(xcode-select -p)}…"
+
 swift build -c "$CONFIG" --product SpaceSwitchApp
 swift build -c "$CONFIG" --product spaceswitch
 BIN="$(swift build -c "$CONFIG" --show-bin-path)"
@@ -24,7 +46,7 @@ cp "$BIN/SpaceSwitchApp" "$APP/Contents/MacOS/SpaceSwitch"
 # Contents/MacOS is case-insensitive on APFS, where "spaceswitch" and the
 # bundle executable "SpaceSwitch" are the same path.
 cp "$BIN/spaceswitch"    "$APP/Contents/Helpers/spaceswitch"
-cp Sources/SpaceSwitchApp/Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
+cp Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
