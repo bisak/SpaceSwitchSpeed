@@ -1,0 +1,7 @@
+.DS_Store
+__pycache__/
+*.pyc
+
+# Working copies of the Dock binary used for testing patches.
+*.bin
+Dock.copy*
