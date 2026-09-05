@@ -19,20 +19,24 @@ public struct Configuration: Codable, Equatable, Sendable {
     /// helper has no window server connection to ask, so it needs the hint.
     public var lastKnownRefreshHz: Double?
 
-    public init(enabled: Bool = true, speed: Double = 0.5, damping: Double? = nil,
-                lastKnownRefreshHz: Double? = nil) {
+    public init(
+        enabled: Bool = true, speed: Double = 0.5, damping: Double? = nil,
+        lastKnownRefreshHz: Double? = nil
+    ) {
         self.enabled = enabled
         self.speed = speed.clamped(to: Speed.range)
         self.damping = damping
         self.lastKnownRefreshHz = lastKnownRefreshHz
     }
 
-    public static let directory = URL(fileURLWithPath: "/Library/Application Support/SpaceSwitch", isDirectory: true)
+    public static let directory = URL(
+        fileURLWithPath: "/Library/Application Support/SpaceSwitch", isDirectory: true)
     public static let url = directory.appendingPathComponent("config.json")
 
     public static func load() -> Configuration {
         guard let data = try? Data(contentsOf: url),
-              let config = try? JSONDecoder().decode(Configuration.self, from: data) else {
+            let config = try? JSONDecoder().decode(Configuration.self, from: data)
+        else {
             return Configuration(enabled: false, speed: Speed.stock)
         }
         return config
@@ -43,13 +47,15 @@ public struct Configuration: Codable, Equatable, Sendable {
     public static func prepareDirectory() throws {
         let fm = FileManager.default
         if !fm.fileExists(atPath: directory.path) {
-            try fm.createDirectory(at: directory, withIntermediateDirectories: true,
-                                   attributes: [.posixPermissions: 0o775])
+            try fm.createDirectory(
+                at: directory, withIntermediateDirectories: true,
+                attributes: [.posixPermissions: 0o775])
         }
         if geteuid() == 0 {
             let adminGroup = 80
-            try? fm.setAttributes([.posixPermissions: 0o775, .ownerAccountID: 0, .groupOwnerAccountID: adminGroup],
-                                  ofItemAtPath: directory.path)
+            try? fm.setAttributes(
+                [.posixPermissions: 0o775, .ownerAccountID: 0, .groupOwnerAccountID: adminGroup],
+                ofItemAtPath: directory.path)
         }
     }
 

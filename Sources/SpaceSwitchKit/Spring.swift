@@ -76,7 +76,9 @@ public struct SpringModel: Sendable {
     // MARK: - Synthesis
 
     /// Coefficients realising a dominant time constant and damping ratio.
-    public func coefficients(timeConstant tau: Double, damping zeta: Double) -> (gain: Double, retention: Double) {
+    public func coefficients(timeConstant tau: Double, damping zeta: Double) -> (
+        gain: Double, retention: Double
+    ) {
         precondition(tau > 0 && zeta > 0)
         let a: Double, trace: Double
         if zeta > 1 {
@@ -110,10 +112,13 @@ public struct SpringModel: Sendable {
     }
 
     /// Coefficients for a speed setting, optionally overriding damping.
-    public func coefficients(speed: Double, damping override: Double? = nil) -> (gain: Double, retention: Double) {
+    public func coefficients(speed: Double, damping override: Double? = nil) -> (
+        gain: Double, retention: Double
+    ) {
         let s = speed.clamped(to: Speed.range)
-        return coefficients(timeConstant: stockTimeConstant * s,
-                            damping: override ?? damping(forSpeed: s))
+        return coefficients(
+            timeConstant: stockTimeConstant * s,
+            damping: override ?? damping(forSpeed: s))
     }
 
     // MARK: - Prediction
@@ -128,8 +133,10 @@ public struct SpringModel: Sendable {
     }
 
     /// The positions Dock would step through, one entry per display frame.
-    public func trajectory(gain g: Double, retention a: Double,
-                           from start: Double = 1.0, to target: Double = 0.0) -> [Double] {
+    public func trajectory(
+        gain g: Double, retention a: Double,
+        from start: Double = 1.0, to target: Double = 0.0
+    ) -> [Double] {
         var pos = start, v = 0.0
         var path = [start]
         let limit = Int(20.0 / dt)
@@ -149,9 +156,11 @@ public struct SpringModel: Sendable {
 
     /// Replays Dock's loop, including the rubber band, to predict how a
     /// coefficient pair will feel. Mirrors the disassembly at `__text:0x150f2c`.
-    public func simulate(gain g: Double, retention a: Double,
-                         from start: Double = 0.923, to target: Double = 0.0,
-                         positionTolerance: Double = 0.001) -> Response {
+    public func simulate(
+        gain g: Double, retention a: Double,
+        from start: Double = 0.923, to target: Double = 0.0,
+        positionTolerance: Double = 0.001
+    ) -> Response {
         var pos = start, v = 0.0
         var steps = 0, arrivalStep = -1, peak = 0.0
         let distance = abs(start - target)
@@ -174,15 +183,16 @@ public struct SpringModel: Sendable {
             if abs(v) < Self.settleEpsilon && abs(pos - target) < positionTolerance { break }
         }
 
-        return Response(arrival: Double(arrivalStep < 0 ? steps : arrivalStep) * dt,
-                        settle: Double(steps) * dt,
-                        overshoot: Swift.max(0, peak) / distance)
+        return Response(
+            arrival: Double(arrivalStep < 0 ? steps : arrivalStep) * dt,
+            settle: Double(steps) * dt,
+            overshoot: Swift.max(0, peak) / distance)
     }
 }
 
 /// The user-facing speed axis: a multiplier on the display's stock pace.
 public enum Speed {
-    public static let range = 0.2 ... 1.0
+    public static let range = 0.2...1.0
     public static let stock = 1.0
 
     public struct Preset: Sendable {
@@ -192,14 +202,16 @@ public enum Speed {
 
     /// Ordered as the slider presents them: default first, fastest last.
     public static let presets: [Preset] = [
-        .init(name: "Default",  value: 1.00),
-        .init(name: "Gentle",   value: 0.75),
+        .init(name: "Default", value: 1.00),
+        .init(name: "Gentle", value: 0.75),
         .init(name: "Balanced", value: 0.50),
-        .init(name: "Quick",    value: 0.35),
-        .init(name: "Instant",  value: 0.20),
+        .init(name: "Quick", value: 0.35),
+        .init(name: "Instant", value: 0.20),
     ]
 }
 
 extension Double {
-    func clamped(to r: ClosedRange<Double>) -> Double { Swift.min(Swift.max(self, r.lowerBound), r.upperBound) }
+    func clamped(to r: ClosedRange<Double>) -> Double {
+        Swift.min(Swift.max(self, r.lowerBound), r.upperBound)
+    }
 }

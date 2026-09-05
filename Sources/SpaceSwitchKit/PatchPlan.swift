@@ -65,11 +65,17 @@ public enum PatchLocator {
         let words = try readWords(target: target, address: text.address, size: Int(text.size))
 
         guard let loop = findLoop(words) else { throw SpaceSwitchError.signatureNotFound }
-        guard let pre = findPreamble(words, base: text.address,
-                                     loopIndex: loop.index, retentionReg: loop.retentionReg) else {
+        guard
+            let pre = findPreamble(
+                words, base: text.address,
+                loopIndex: loop.index, retentionReg: loop.retentionReg)
+        else {
             throw SpaceSwitchError.signatureNotFound
         }
-        guard let band = findBand(words, loopIndex: loop.index, gainReg: pre.gainReg, positionReg: loop.positionReg) else {
+        guard
+            let band = findBand(
+                words, loopIndex: loop.index, gainReg: pre.gainReg, positionReg: loop.positionReg)
+        else {
             throw SpaceSwitchError.signatureNotFound
         }
 
@@ -77,7 +83,7 @@ public enum PatchLocator {
 
         // The gain register must survive from where it is established to the
         // rubber band. Anything else writing it would silently corrupt both.
-        for i in (pre.gainLoadIndex + 1) ... band.index where i != loop.index + 3 {
+        for i in (pre.gainLoadIndex + 1)...band.index where i != loop.index + 3 {
             if writesFPRegister(words[i], pre.gainReg) {
                 throw SpaceSwitchError.unexpectedConstants(
                     "register d\(pre.gainReg) is overwritten at 0x\(String(addr(i), radix: 16))")
@@ -111,20 +117,28 @@ public enum PatchLocator {
     /// (or, once patched, the `fmul` that replaced it) anchors the match.
     private static func findLoop(_ w: [UInt32]) -> Loop? {
         var hit: Loop?
-        for i in 0 ..< (w.count - 8) {
+        for i in 0..<(w.count - 8) {
             guard let sub = ARM64.decodeFSub(w[i]) else { continue }
             guard let ldv = ARM64.decodeLDRd(w[i + 1]) else { continue }
             guard let mul = ARM64.decodeFMul(w[i + 2]),
-                  mul.d == ldv.t, mul.n == ldv.t else { continue }
+                mul.d == ldv.t, mul.n == ldv.t
+            else { continue }
 
-            let isStockGain = ARM64.decodeFAdd(w[i + 3]).map { $0.d == sub.d && $0.n == sub.d && $0.m == sub.d } ?? false
+            let isStockGain =
+                ARM64.decodeFAdd(w[i + 3]).map { $0.d == sub.d && $0.n == sub.d && $0.m == sub.d } ?? false
             let isPatchedGain = ARM64.decodeFMul(w[i + 3]).map { $0.d == sub.d && $0.n == sub.d } ?? false
             guard isStockGain || isPatchedGain else { continue }
 
-            guard let acc = ARM64.decodeFAdd(w[i + 4]), acc.d == sub.d, acc.n == sub.d, acc.m == ldv.t else { continue }
-            guard let stv = ARM64.decodeSTRd(w[i + 5]), stv.t == sub.d, stv.n == ldv.n, stv.offset == ldv.offset else { continue }
+            guard let acc = ARM64.decodeFAdd(w[i + 4]), acc.d == sub.d, acc.n == sub.d, acc.m == ldv.t else {
+                continue
+            }
+            guard let stv = ARM64.decodeSTRd(w[i + 5]), stv.t == sub.d, stv.n == ldv.n,
+                stv.offset == ldv.offset
+            else { continue }
             guard let step = ARM64.decodeFMul(w[i + 6]), step.m == sub.d else { continue }
-            guard let adv = ARM64.decodeFAdd(w[i + 7]), adv.d == sub.m, adv.n == sub.m, adv.m == step.d else { continue }
+            guard let adv = ARM64.decodeFAdd(w[i + 7]), adv.d == sub.m, adv.n == sub.m, adv.m == step.d else {
+                continue
+            }
 
             // Two matches would mean the signature is not discriminating enough.
             if hit != nil { return nil }
@@ -140,8 +154,10 @@ public enum PatchLocator {
         let currentPage: UInt64, stockPage: UInt64, stockOffset: UInt32
     }
 
-    private static func findPreamble(_ w: [UInt32], base: UInt64,
-                                    loopIndex: Int, retentionReg: UInt32) -> Preamble? {
+    private static func findPreamble(
+        _ w: [UInt32], base: UInt64,
+        loopIndex: Int, retentionReg: UInt32
+    ) -> Preamble? {
         let lower = max(1, loopIndex - preambleWindow)
         var i = loopIndex - 1
         while i >= lower {
@@ -162,34 +178,43 @@ public enum PatchLocator {
             } else if let g = ARM64.decodeLDRd(w[i + 1]), g.n == ldr.n, g.offset == 8, ldr.offset == 0 {
                 gainReg = g.t
                 state = .patched
-            } else { continue }
+            } else {
+                continue
+            }
 
             // The redundant adrp that re-establishes the base register. Without
             // it, repointing the base would corrupt every later constant load.
-            guard let restore = ARM64.decodeADRP(w[i + 2], at: pc(i + 2)), restore.d == ldr.n else { continue }
+            guard let restore = ARM64.decodeADRP(w[i + 2], at: pc(i + 2)), restore.d == ldr.n else {
+                continue
+            }
             // The constant block is contiguous, so the stock retention offset is
             // recoverable from its neighbour. That is what makes revert possible
             // without persisting anything; refuse the patch if it does not hold.
-            guard let neighbour = ARM64.decodeLDRd(w[i + 3]), neighbour.n == ldr.n, neighbour.offset >= 8 else { continue }
+            guard let neighbour = ARM64.decodeLDRd(w[i + 3]), neighbour.n == ldr.n, neighbour.offset >= 8
+            else { continue }
             let recoveredOffset = neighbour.offset - 8
             if state == .stock && recoveredOffset != ldr.offset { continue }
 
-            return Preamble(state: state,
-                            adrpIndex: i - 1, retentionLoadIndex: i, gainLoadIndex: i + 1,
-                            baseReg: ldr.n, gainReg: gainReg,
-                            currentPage: adrp.page, stockPage: restore.page,
-                            stockOffset: recoveredOffset)
+            return Preamble(
+                state: state,
+                adrpIndex: i - 1, retentionLoadIndex: i, gainLoadIndex: i + 1,
+                baseReg: ldr.n, gainReg: gainReg,
+                currentPage: adrp.page, stockPage: restore.page,
+                stockOffset: recoveredOffset)
         }
         return nil
     }
 
     private struct Band { let index: Int, destReg: UInt32 }
 
-    private static func findBand(_ w: [UInt32], loopIndex: Int, gainReg: UInt32, positionReg: UInt32) -> Band? {
-        for i in loopIndex ..< min(w.count, loopIndex + loopWindow) {
-            if let s = ARM64.decodeFSub(w[i]), s.n == gainReg, s.m == positionReg { return Band(index: i, destReg: s.d) }
+    private static func findBand(_ w: [UInt32], loopIndex: Int, gainReg: UInt32, positionReg: UInt32) -> Band?
+    {
+        for i in loopIndex..<min(w.count, loopIndex + loopWindow) {
+            if let s = ARM64.decodeFSub(w[i]), s.n == gainReg, s.m == positionReg {
+                return Band(index: i, destReg: s.d)
+            }
             if w[i] & 0xFFFF_FC00 == 0x1E61_4000, (w[i] >> 5) & 0x1F == positionReg {
-                return Band(index: i, destReg: w[i] & 0x1F)      // already fneg
+                return Band(index: i, destReg: w[i] & 0x1F)  // already fneg
             }
         }
         return nil

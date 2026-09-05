@@ -87,10 +87,13 @@ public final class DockTarget {
         var buffer = Data(count: count)
         var got = mach_vm_size_t(0)
         let kr: kern_return_t = buffer.withUnsafeMutableBytes { raw in
-            mach_vm_read_overwrite(task, mach_vm_address_t(address), mach_vm_size_t(count),
-                                   mach_vm_address_t(UInt(bitPattern: raw.baseAddress)), &got)
+            mach_vm_read_overwrite(
+                task, mach_vm_address_t(address), mach_vm_size_t(count),
+                mach_vm_address_t(UInt(bitPattern: raw.baseAddress)), &got)
         }
-        guard kr == KERN_SUCCESS else { throw SpaceSwitchError.machFailure("read at 0x\(String(address, radix: 16))", kr) }
+        guard kr == KERN_SUCCESS else {
+            throw SpaceSwitchError.machFailure("read at 0x\(String(address, radix: 16))", kr)
+        }
         guard Int(got) == count else { throw SpaceSwitchError.machFailure("short read", KERN_FAILURE) }
         return buffer
     }
@@ -99,20 +102,24 @@ public final class DockTarget {
         // __TEXT is mapped read-execute and shared copy-on-write. Requesting
         // VM_PROT_COPY forces a private copy so the write cannot reach the file
         // or any other process mapping the same page.
-        var kr = mach_vm_protect(task, mach_vm_address_t(address), mach_vm_size_t(data.count), 0,
-                                 VM_PROT_READ | VM_PROT_WRITE | VM_PROT_COPY)
+        var kr = mach_vm_protect(
+            task, mach_vm_address_t(address), mach_vm_size_t(data.count), 0,
+            VM_PROT_READ | VM_PROT_WRITE | VM_PROT_COPY)
         if kr != KERN_SUCCESS {
-            kr = mach_vm_protect(task, mach_vm_address_t(address), mach_vm_size_t(data.count), 0,
-                                 VM_PROT_READ | VM_PROT_WRITE)
+            kr = mach_vm_protect(
+                task, mach_vm_address_t(address), mach_vm_size_t(data.count), 0,
+                VM_PROT_READ | VM_PROT_WRITE)
             guard kr == KERN_SUCCESS else { throw SpaceSwitchError.machFailure("protect", kr) }
         }
         let wrote: kern_return_t = data.withUnsafeBytes { raw in
-            mach_vm_write(task, mach_vm_address_t(address),
-                          vm_offset_t(UInt(bitPattern: raw.baseAddress)), mach_msg_type_number_t(data.count))
+            mach_vm_write(
+                task, mach_vm_address_t(address),
+                vm_offset_t(UInt(bitPattern: raw.baseAddress)), mach_msg_type_number_t(data.count))
         }
         guard wrote == KERN_SUCCESS else { throw SpaceSwitchError.machFailure("write", wrote) }
-        _ = mach_vm_protect(task, mach_vm_address_t(address), mach_vm_size_t(data.count), 0,
-                            VM_PROT_READ | VM_PROT_EXECUTE)
+        _ = mach_vm_protect(
+            task, mach_vm_address_t(address), mach_vm_size_t(data.count), 0,
+            VM_PROT_READ | VM_PROT_EXECUTE)
     }
 
     public func readWord(_ address: UInt64) throws -> UInt32 {

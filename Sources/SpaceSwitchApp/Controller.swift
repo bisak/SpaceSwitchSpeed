@@ -137,7 +137,8 @@ final class Controller: ObservableObject {
                 guard (try? process.run()) != nil else {
                     return continuation.resume(returning: .failed)
                 }
-                let errorText = String(decoding: pipe.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+                let errorText = String(
+                    decoding: pipe.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
                 process.waitUntilExit()
 
                 if process.terminationStatus == 0 {
@@ -166,10 +167,12 @@ final class Controller: ObservableObject {
     /// Contents/MacOS, where a case-insensitive filesystem makes "spaceswitch"
     /// and the bundle executable "SpaceSwitch" the same file.
     private static func commandLineTool() -> URL? {
-        [Bundle.main.bundleURL.appendingPathComponent("Contents/Helpers/spaceswitch"),
-         URL(fileURLWithPath: "/opt/homebrew/bin/spaceswitch"),
-         URL(fileURLWithPath: "/usr/local/bin/spaceswitch")]
-            .first { FileManager.default.isExecutableFile(atPath: $0.path) }
+        [
+            Bundle.main.bundleURL.appendingPathComponent("Contents/Helpers/spaceswitch"),
+            URL(fileURLWithPath: "/opt/homebrew/bin/spaceswitch"),
+            URL(fileURLWithPath: "/usr/local/bin/spaceswitch"),
+        ]
+        .first { FileManager.default.isExecutableFile(atPath: $0.path) }
     }
 }
 

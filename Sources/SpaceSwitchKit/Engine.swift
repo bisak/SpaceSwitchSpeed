@@ -44,7 +44,9 @@ public final class Engine {
             retention = try target.readDouble(sites.stockRetentionAddress)
             gain = SpringModel.stockGain
         case .patched:
-            guard let page = sites.scratchPage else { throw SpaceSwitchError.verificationFailed("no scratch page") }
+            guard let page = sites.scratchPage else {
+                throw SpaceSwitchError.verificationFailed("no scratch page")
+            }
             retention = try target.readDouble(page)
             gain = try target.readDouble(page + 8)
         }
@@ -72,7 +74,9 @@ public final class Engine {
         switch sites.state {
         case .patched:
             // Instructions are already in place; only the constants change.
-            guard let page = sites.scratchPage else { throw SpaceSwitchError.verificationFailed("no scratch page") }
+            guard let page = sites.scratchPage else {
+                throw SpaceSwitchError.verificationFailed("no scratch page")
+            }
             try target.writeDouble(page, retention)
             try target.writeDouble(page + 8, gain)
         case .stock:
@@ -86,7 +90,8 @@ public final class Engine {
 
         let after = try status()
         guard after.applied,
-              abs(after.gain - gain) < 1e-9, abs(after.retention - retention) < 1e-12 else {
+            abs(after.gain - gain) < 1e-9, abs(after.retention - retention) < 1e-12
+        else {
             throw SpaceSwitchError.verificationFailed("constants did not read back")
         }
         return after
@@ -102,7 +107,8 @@ public final class Engine {
                 throw SpaceSwitchError.noReachableScratch
             }
             guard let loadA = ARM64.ldrd(t: sites.retentionReg, n: sites.baseReg, offset: 0),
-                  let loadG = ARM64.ldrd(t: sites.gainReg, n: sites.baseReg, offset: 8) else {
+                let loadG = ARM64.ldrd(t: sites.gainReg, n: sites.baseReg, offset: 8)
+            else {
                 throw SpaceSwitchError.encodingFailed("constant loads")
             }
 
@@ -110,10 +116,12 @@ public final class Engine {
             // repointed, so no intermediate state reads a wrong address.
             try target.writeWord(sites.retentionLoadSite, loadA)
             try target.writeWord(sites.gainLoadSite, loadG)
-            try target.writeWord(sites.gainSite,
-                                 ARM64.fmul(d: sites.errorReg, n: sites.errorReg, m: sites.gainReg))
-            try target.writeWord(sites.bandSite,
-                                 ARM64.fneg(d: sites.bandDestReg, n: sites.positionReg))
+            try target.writeWord(
+                sites.gainSite,
+                ARM64.fmul(d: sites.errorReg, n: sites.errorReg, m: sites.gainReg))
+            try target.writeWord(
+                sites.bandSite,
+                ARM64.fneg(d: sites.bandDestReg, n: sites.positionReg))
             try target.writeWord(sites.adrpSite, adrp)
         } catch {
             target.freeScratch(scratch)
@@ -128,22 +136,28 @@ public final class Engine {
         guard sites.state == .patched else { return }
 
         guard let adrp = ARM64.adrp(d: sites.baseReg, page: sites.stockConstPage, at: sites.adrpSite),
-              let loadA = ARM64.ldrd(t: sites.retentionReg, n: sites.baseReg, offset: sites.stockRetentionOffset) else {
+            let loadA = ARM64.ldrd(
+                t: sites.retentionReg, n: sites.baseReg, offset: sites.stockRetentionOffset)
+        else {
             throw SpaceSwitchError.encodingFailed("stock preamble")
         }
 
         try target.writeWord(sites.adrpSite, adrp)
         try target.writeWord(sites.retentionLoadSite, loadA)
-        try target.writeWord(sites.gainLoadSite, 0x6F00_E400 | sites.gainReg)   // movi vK.2d, #0
-        try target.writeWord(sites.gainSite,
-                             ARM64.fadd(d: sites.errorReg, n: sites.errorReg, m: sites.errorReg))
-        try target.writeWord(sites.bandSite,
-                             ARM64.fsub(d: sites.bandDestReg, n: sites.gainReg, m: sites.positionReg))
+        try target.writeWord(sites.gainLoadSite, 0x6F00_E400 | sites.gainReg)  // movi vK.2d, #0
+        try target.writeWord(
+            sites.gainSite,
+            ARM64.fadd(d: sites.errorReg, n: sites.errorReg, m: sites.errorReg))
+        try target.writeWord(
+            sites.bandSite,
+            ARM64.fsub(d: sites.bandDestReg, n: sites.gainReg, m: sites.positionReg))
 
         if let scratch = sites.scratchPage { target.freeScratch(scratch) }
 
         let after = try PatchLocator.locate(target: target, image: image)
-        guard after.state == .stock else { throw SpaceSwitchError.verificationFailed("still patched after revert") }
+        guard after.state == .stock else {
+            throw SpaceSwitchError.verificationFailed("still patched after revert")
+        }
         let retention = try target.readDouble(after.stockRetentionAddress)
         guard abs(retention - SpringModel.stockRetention) < 1e-9 else {
             throw SpaceSwitchError.verificationFailed("retention is \(retention) after revert")

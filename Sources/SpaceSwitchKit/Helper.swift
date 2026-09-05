@@ -18,8 +18,10 @@ public struct HelperStatus: Codable, Equatable, Sendable {
     public var updatedAt: Date
     public var error: String?
 
-    public init(applied: Bool, speed: Double, damping: Double, gain: Double, retention: Double,
-                refreshHz: Double, dockPID: Int32, updatedAt: Date, error: String?) {
+    public init(
+        applied: Bool, speed: Double, damping: Double, gain: Double, retention: Double,
+        refreshHz: Double, dockPID: Int32, updatedAt: Date, error: String?
+    ) {
         self.applied = applied
         self.speed = speed
         self.damping = damping
@@ -78,8 +80,9 @@ public enum HelperInstall {
             if fm.fileExists(atPath: url.path) { try fm.removeItem(at: url) }
         }
         try fm.copyItem(at: source, to: executableURL)
-        try fm.setAttributes([.posixPermissions: 0o755, .ownerAccountID: 0, .groupOwnerAccountID: 0],
-                             ofItemAtPath: executableURL.path)
+        try fm.setAttributes(
+            [.posixPermissions: 0o755, .ownerAccountID: 0, .groupOwnerAccountID: 0],
+            ofItemAtPath: executableURL.path)
 
         let plist: [String: Any] = [
             "Label": label,
@@ -90,10 +93,11 @@ public enum HelperInstall {
         ]
         let data = try PropertyListSerialization.data(fromPropertyList: plist, format: .xml, options: 0)
         try data.write(to: plistURL, options: .atomic)
-        try fm.setAttributes([.posixPermissions: 0o644, .ownerAccountID: 0, .groupOwnerAccountID: 0],
-                             ofItemAtPath: plistURL.path)
+        try fm.setAttributes(
+            [.posixPermissions: 0o644, .ownerAccountID: 0, .groupOwnerAccountID: 0],
+            ofItemAtPath: plistURL.path)
 
-        _ = launchctl(["bootout", "system/\(label)"])          // ignore "not loaded"
+        _ = launchctl(["bootout", "system/\(label)"])  // ignore "not loaded"
         let result = launchctl(["bootstrap", "system", plistURL.path])
         guard result.status == 0 else {
             throw SpaceSwitchError.verificationFailed("launchctl bootstrap failed: \(result.output)")
@@ -120,6 +124,9 @@ public enum HelperInstall {
         guard (try? process.run()) != nil else { return (-1, "could not run launchctl") }
         let data = pipe.fileHandleForReading.readDataToEndOfFile()
         process.waitUntilExit()
-        return (process.terminationStatus, String(decoding: data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines))
+        return (
+            process.terminationStatus,
+            String(decoding: data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+        )
     }
 }

@@ -4,6 +4,7 @@
 
 import Darwin
 import Foundation
+import MachO
 
 /// Dock's Mach-O as it is actually mapped, parsed out of the live process.
 ///
@@ -13,10 +14,6 @@ import Foundation
 public struct MachOImage {
     public let loadAddress: UInt64
     public let sections: [String: (address: UInt64, size: UInt64)]
-
-    private static let MH_MAGIC_64: UInt32 = 0xFEED_FACF
-    private static let MH_EXECUTE: UInt32 = 2
-    private static let LC_SEGMENT_64: UInt32 = 0x19
 
     public init(target: DockTarget) throws {
         guard let base = try MachOImage.findMainExecutable(target) else {
@@ -33,18 +30,18 @@ public struct MachOImage {
         var textVMAddr: UInt64?
         commands.withUnsafeBytes { raw in
             var offset = 0
-            for _ in 0 ..< ncmds {
+            for _ in 0..<ncmds {
                 guard offset + 8 <= raw.count else { break }
                 let cmd = raw.loadUnaligned(fromByteOffset: offset, as: UInt32.self)
                 let cmdsize = Int(raw.loadUnaligned(fromByteOffset: offset + 4, as: UInt32.self))
                 guard cmdsize > 0, offset + cmdsize <= raw.count else { break }
 
-                if cmd == MachOImage.LC_SEGMENT_64 {
+                if cmd == UInt32(LC_SEGMENT_64) {
                     let segName = MachOImage.name(raw, offset + 8)
                     let vmaddr = raw.loadUnaligned(fromByteOffset: offset + 24, as: UInt64.self)
                     if segName == "__TEXT" { textVMAddr = vmaddr }
                     let nsects = Int(raw.loadUnaligned(fromByteOffset: offset + 64, as: UInt32.self))
-                    for s in 0 ..< nsects {
+                    for s in 0..<nsects {
                         let so = offset + 72 + s * 80
                         guard so + 80 <= raw.count else { break }
                         let sect = MachOImage.name(raw, so)
@@ -65,7 +62,7 @@ public struct MachOImage {
 
     private static func name(_ raw: UnsafeRawBufferPointer, _ offset: Int) -> String {
         var bytes = [UInt8]()
-        for i in 0 ..< 16 {
+        for i in 0..<16 {
             let b = raw.load(fromByteOffset: offset + i, as: UInt8.self)
             if b == 0 { break }
             bytes.append(b)
@@ -85,16 +82,20 @@ public struct MachOImage {
             var count = mach_msg_type_number_t(MemoryLayout<vm_region_basic_info_data_64_t>.size / 4)
             let kr = withUnsafeMutablePointer(to: &info) {
                 $0.withMemoryRebound(to: Int32.self, capacity: Int(count)) {
-                    mach_vm_region(target.task, &address, &size, VM_REGION_BASIC_INFO_64, $0, &count, &objectName)
+                    mach_vm_region(
+                        target.task, &address, &size, VM_REGION_BASIC_INFO_64, $0, &count, &objectName)
                 }
             }
             guard kr == KERN_SUCCESS else { return nil }
 
             if info.protection & VM_PROT_EXECUTE != 0,
-               let header = try? target.read(UInt64(address), 16) {
+                let header = try? target.read(UInt64(address), 16)
+            {
                 let magic = header.withUnsafeBytes { $0.loadUnaligned(as: UInt32.self) }
-                let filetype = header.withUnsafeBytes { $0.loadUnaligned(fromByteOffset: 12, as: UInt32.self) }
-                if magic == MH_MAGIC_64 && filetype == MH_EXECUTE { return UInt64(address) }
+                let filetype = header.withUnsafeBytes {
+                    $0.loadUnaligned(fromByteOffset: 12, as: UInt32.self)
+                }
+                if magic == MH_MAGIC_64 && filetype == UInt32(MH_EXECUTE) { return UInt64(address) }
             }
             address += size
         }

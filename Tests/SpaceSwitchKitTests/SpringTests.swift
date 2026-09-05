@@ -3,6 +3,7 @@
 // See LICENSE. This program comes with ABSOLUTELY NO WARRANTY.
 
 import Testing
+
 @testable import SpaceSwitchKit
 
 @Suite("Spring model")
@@ -30,8 +31,9 @@ struct SpringTests {
     func underdampedStock() {
         let model = SpringModel(dt: 1 / 60.0)
         #expect(model.stockDamping < 1.0)
-        let (gain, retention) = model.coefficients(timeConstant: model.stockTimeConstant,
-                                                  damping: model.stockDamping)
+        let (gain, retention) = model.coefficients(
+            timeConstant: model.stockTimeConstant,
+            damping: model.stockDamping)
         #expect(abs(gain - SpringModel.stockGain) < 1e-9)
         #expect(abs(retention - SpringModel.stockRetention) < 1e-12)
     }

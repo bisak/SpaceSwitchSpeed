@@ -20,8 +20,9 @@ final class SteppedSliderView: NSView {
 
     init(stops: Int, target: AnyObject, action: Selector) {
         self.stops = stops
-        slider = NSSlider(value: 0, minValue: 0, maxValue: Double(stops - 1),
-                          target: target, action: action)
+        slider = NSSlider(
+            value: 0, minValue: 0, maxValue: Double(stops - 1),
+            target: target, action: action)
         slider.isContinuous = true
         slider.controlSize = .regular
         super.init(frame: .zero)
@@ -42,8 +43,9 @@ final class SteppedSliderView: NSView {
     private var markSpacing: CGFloat { 5 }
 
     override var intrinsicContentSize: NSSize {
-        NSSize(width: NSView.noIntrinsicMetric,
-               height: slider.intrinsicContentSize.height + markSpacing)
+        NSSize(
+            width: NSView.noIntrinsicMetric,
+            height: slider.intrinsicContentSize.height + markSpacing)
     }
 
     override func draw(_ dirtyRect: NSRect) {
@@ -58,10 +60,13 @@ final class SteppedSliderView: NSView {
         let diameter: CGFloat = 3
 
         (isEnabled ? NSColor.tertiaryLabelColor : NSColor.quaternaryLabelColor).setFill()
-        for index in 0 ..< stops {
+        for index in 0..<stops {
             let x = inset + span * CGFloat(index) / CGFloat(stops - 1)
-            NSBezierPath(ovalIn: NSRect(x: x - diameter / 2, y: y,
-                                        width: diameter, height: diameter)).fill()
+            NSBezierPath(
+                ovalIn: NSRect(
+                    x: x - diameter / 2, y: y,
+                    width: diameter, height: diameter)
+            ).fill()
         }
     }
 
@@ -81,9 +86,10 @@ struct SteppedSlider: NSViewRepresentable {
     var onCommit: () -> Void = {}
 
     func makeNSView(context: Context) -> SteppedSliderView {
-        let view = SteppedSliderView(stops: stops,
-                                     target: context.coordinator,
-                                     action: #selector(Coordinator.changed(_:)))
+        let view = SteppedSliderView(
+            stops: stops,
+            target: context.coordinator,
+            action: #selector(Coordinator.changed(_:)))
         view.slider.doubleValue = value
         return view
     }

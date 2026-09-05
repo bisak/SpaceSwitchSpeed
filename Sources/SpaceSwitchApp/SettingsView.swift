@@ -2,8 +2,8 @@
 // Copyright (C) 2026 Biser Atanasov. Licensed under AGPL-3.0-or-later.
 // See LICENSE. This program comes with ABSOLUTELY NO WARRANTY.
 
-import SwiftUI
 import SpaceSwitchKit
+import SwiftUI
 
 struct SettingsView: View {
     @ObservedObject var controller: Controller
@@ -18,8 +18,10 @@ struct SettingsView: View {
                         // accent fill, so the glyphs are styled on their own.
                         Image(systemName: "tortoise.fill")
                             .foregroundStyle(.secondary)
-                        SteppedSlider(value: $controller.stop,
-                                      stops: Speed.presets.count) { controller.commit() }
+                        SteppedSlider(
+                            value: $controller.stop,
+                            stops: Speed.presets.count
+                        ) { controller.commit() }
                         Image(systemName: "hare.fill")
                             .foregroundStyle(.secondary)
                     }
@@ -66,7 +68,7 @@ private struct OptionsSheet: View {
                     Toggle("Set damping automatically", isOn: $automatic)
                     LabeledContent("Damping") {
                         VStack(alignment: .leading, spacing: 4) {
-                            Slider(value: $damping, in: 0.6 ... 1.6)
+                            Slider(value: $damping, in: 0.6...1.6)
                             HStack {
                                 Text("Springy")
                                 Spacer()
@@ -98,7 +100,9 @@ private struct OptionsSheet: View {
         .frame(width: 460)
         .fixedSize(horizontal: false, vertical: true)
         .onChange(of: automatic) { isAutomatic in
-            if isAutomatic { damping = controller.model.damping(forSpeed: Speed.presets[Int(controller.stop)].value) }
+            if isAutomatic {
+                damping = controller.model.damping(forSpeed: Speed.presets[Int(controller.stop)].value)
+            }
         }
     }
 }
@@ -115,7 +119,11 @@ private struct NoteView: View {
             Text(message)
                 .fixedSize(horizontal: false, vertical: true)
             if case .needsSIPDisabled = note {
-                Link("Learn More…", destination: URL(string: "https://github.com/bisak/spaceswitch#disabling-system-integrity-protection")!)
+                Link(
+                    "Learn More…",
+                    destination: URL(
+                        string: "https://github.com/bisak/spaceswitch#disabling-system-integrity-protection")!
+                )
             }
             Spacer(minLength: 0)
         }

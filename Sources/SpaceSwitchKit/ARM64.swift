@@ -63,7 +63,7 @@ public enum ARM64 {
         let immlo = (w >> 29) & 0x3
         let immhi = (w >> 5) & 0x7FFFF
         var imm = Int64((immhi << 2) | immlo)
-        if imm & (1 << 20) != 0 { imm -= (1 << 21) }          // sign-extend 21 bits
+        if imm & (1 << 20) != 0 { imm -= (1 << 21) }  // sign-extend 21 bits
         return (w & 0x1F, UInt64(Int64(pc & ~0xFFF) + imm * 0x1000))
     }
 
