@@ -10,11 +10,12 @@ struct SpaceSwitchApp: App {
     @StateObject private var controller = Controller()
 
     var body: some Scene {
-        Window("SpaceSwitch", id: "main") {
+        Window("Space Switching", id: "main") {
             SettingsView(controller: controller)
-                .frame(minWidth: 560, idealWidth: 620, minHeight: 620)
+                .frame(width: 480)
+                .fixedSize(horizontal: false, vertical: true)
         }
-        .windowResizability(.contentMinSize)
+        .windowResizability(.contentSize)
         .commands { CommandGroup(replacing: .newItem) {} }
     }
 }

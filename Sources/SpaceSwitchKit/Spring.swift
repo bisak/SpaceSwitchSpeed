@@ -188,15 +188,15 @@ public enum Speed {
     public struct Preset: Sendable {
         public let name: String
         public let value: Double
-        public let detail: String
     }
 
+    /// Ordered as the slider presents them: default first, fastest last.
     public static let presets: [Preset] = [
-        .init(name: "Stock",    value: 1.00, detail: "Exactly what macOS ships"),
-        .init(name: "Gentle",   value: 0.75, detail: "Noticeably quicker, same character"),
-        .init(name: "Balanced", value: 0.50, detail: "About twice as fast"),
-        .init(name: "Quick",    value: 0.35, detail: "Snappy, still animated"),
-        .init(name: "Instant",  value: 0.20, detail: "Barely perceptible"),
+        .init(name: "Default",  value: 1.00),
+        .init(name: "Gentle",   value: 0.75),
+        .init(name: "Balanced", value: 0.50),
+        .init(name: "Quick",    value: 0.35),
+        .init(name: "Instant",  value: 0.20),
     ]
 }
 

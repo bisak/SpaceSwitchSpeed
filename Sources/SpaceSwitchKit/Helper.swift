@@ -33,22 +33,24 @@ public struct HelperStatus: Codable, Equatable, Sendable {
 
     public static let url = Configuration.directory.appendingPathComponent("status.json")
 
-    public static func load() -> HelperStatus? {
-        guard let data = try? Data(contentsOf: url) else { return nil }
-        return try? decoder.decode(HelperStatus.self, from: data)
-    }
-
-    private static var decoder: JSONDecoder {
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
-        return decoder
-    }
-
-    public func save() {
+    /// Encoder and decoder must agree on dates; a mismatch fails silently and
+    /// leaves every reader believing the helper has never run.
+    private static var coder: (JSONEncoder, JSONDecoder) {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         encoder.dateEncodingStrategy = .iso8601
-        guard let data = try? encoder.encode(self) else { return }
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return (encoder, decoder)
+    }
+
+    public static func load() -> HelperStatus? {
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        return try? coder.1.decode(HelperStatus.self, from: data)
+    }
+
+    public func save() {
+        guard let data = try? Self.coder.0.encode(self) else { return }
         try? data.write(to: Self.url, options: .atomic)
         try? FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: Self.url.path)
     }
@@ -56,46 +58,32 @@ public struct HelperStatus: Codable, Equatable, Sendable {
 
 /// Installs and removes the root LaunchDaemon that reapplies the setting.
 ///
-/// The patch lives only in Dock's memory, so it is lost whenever Dock restarts.
-/// A daemon is the supported way to have something privileged running at boot.
+/// The daemon is this same executable run with `daemon`, so there is no second
+/// binary to locate or keep in step.
 public enum HelperInstall {
     public static let label = "com.bisak.spaceswitch.helper"
     public static let plistURL = URL(fileURLWithPath: "/Library/LaunchDaemons/\(label).plist")
-    public static let executableURL = Configuration.directory.appendingPathComponent("spaceswitchd")
+    public static let executableURL = Configuration.directory.appendingPathComponent("spaceswitch")
 
     public static var isInstalled: Bool { FileManager.default.fileExists(atPath: plistURL.path) }
 
-    /// Locates the `spaceswitchd` shipped alongside whatever is calling this —
-    /// a Homebrew prefix, the app bundle, or a build directory.
-    public static func bundledHelper() -> URL? {
-        let selfPath = URL(fileURLWithPath: ProcessInfo.processInfo.arguments[0]).resolvingSymlinksInPath()
-        let directory = selfPath.deletingLastPathComponent()
-        let candidates = [
-            directory.appendingPathComponent("spaceswitchd"),
-            directory.deletingLastPathComponent().appendingPathComponent("MacOS/spaceswitchd"),
-            directory.deletingLastPathComponent().appendingPathComponent("libexec/spaceswitchd"),
-            URL(fileURLWithPath: "/usr/local/libexec/spaceswitchd"),
-            URL(fileURLWithPath: "/opt/homebrew/libexec/spaceswitchd"),
-        ]
-        return candidates.first { FileManager.default.isExecutableFile(atPath: $0.path) }
-    }
-
     public static func install() throws {
         guard geteuid() == 0 else { throw SpaceSwitchError.notPermitted(KERN_PROTECTION_FAILURE) }
-        guard let source = bundledHelper() else {
-            throw SpaceSwitchError.verificationFailed("could not find spaceswitchd next to this executable")
-        }
+        let source = URL(fileURLWithPath: ProcessInfo.processInfo.arguments[0]).resolvingSymlinksInPath()
 
         try Configuration.prepareDirectory()
         let fm = FileManager.default
-        if fm.fileExists(atPath: executableURL.path) { try fm.removeItem(at: executableURL) }
+        for stale in ["spaceswitch", "spaceswitchd"] {
+            let url = Configuration.directory.appendingPathComponent(stale)
+            if fm.fileExists(atPath: url.path) { try fm.removeItem(at: url) }
+        }
         try fm.copyItem(at: source, to: executableURL)
         try fm.setAttributes([.posixPermissions: 0o755, .ownerAccountID: 0, .groupOwnerAccountID: 0],
                              ofItemAtPath: executableURL.path)
 
         let plist: [String: Any] = [
             "Label": label,
-            "ProgramArguments": [executableURL.path],
+            "ProgramArguments": [executableURL.path, "daemon"],
             "RunAtLoad": true,
             "KeepAlive": true,
             "ProcessType": "Background",
@@ -116,9 +104,9 @@ public enum HelperInstall {
         guard geteuid() == 0 else { throw SpaceSwitchError.notPermitted(KERN_PROTECTION_FAILURE) }
         _ = launchctl(["bootout", "system/\(label)"])
         let fm = FileManager.default
-        if fm.fileExists(atPath: plistURL.path) { try fm.removeItem(at: plistURL) }
-        if fm.fileExists(atPath: executableURL.path) { try fm.removeItem(at: executableURL) }
-        try? fm.removeItem(at: HelperStatus.url)
+        for url in [plistURL, executableURL, HelperStatus.url] where fm.fileExists(atPath: url.path) {
+            try? fm.removeItem(at: url)
+        }
     }
 
     @discardableResult

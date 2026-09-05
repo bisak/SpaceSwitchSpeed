@@ -96,7 +96,7 @@ deliberate point on a designed curve rather than a guess.
 
 | Preset | Speed | 120 Hz arrival | 60 Hz arrival | Overshoot |
 |---|---|---|---|---|
-| Stock | 1.00 | 317 ms | 283 ms | none |
+| Default | 1.00 | 317 ms | 283 ms | none |
 | Gentle | 0.75 | 242 ms | 233 ms | none |
 | Balanced | 0.50 | 167 ms | 167 ms | none |
 | Quick | 0.35 | 125 ms | 117 ms | none |
@@ -131,13 +131,11 @@ swift build -c release          # command line tool
 
 ### App
 
-Drag the speed slider. The preview replays the exact spring you have selected — the
-same integrator Dock runs, at your display's real frame rate — so you can judge a
-setting before committing to it.
+One slider. Drag it, and the change takes effect.
 
-Changing Dock needs root, so the app installs a small privileged helper (one password
-prompt). The helper also reapplies your setting whenever Dock restarts, which is what
-makes it survive logging out and rebooting.
+The first change asks for your password once, because writing to Dock needs root.
+Everything after that is silent, including putting the setting back whenever Dock
+restarts. Sliding all the way back to Default turns SpaceSwitch off entirely.
 
 ### Command line
 

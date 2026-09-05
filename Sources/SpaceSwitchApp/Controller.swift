@@ -6,168 +6,134 @@ import Combine
 import Foundation
 import SpaceSwitchKit
 
-/// Owns the settings the window edits and reports what the helper did with them.
+/// Backs the one control the window has.
 ///
-/// The app is unprivileged: writing to Dock needs root, so the app only records
-/// intent and the helper enacts it. Everything the window shows about the live
-/// system comes from the helper's own status file, never from assumption.
+/// Changing Dock needs root, which the app does not have. Rather than making
+/// that the user's problem, the first change they make authorises a background
+/// job once and everything after it is silent.
 @MainActor
 final class Controller: ObservableObject {
-    @Published var enabled: Bool { didSet { publish() } }
-    @Published var speed: Double { didSet { publish() } }
-    @Published var usesCustomDamping: Bool { didSet { publish() } }
-    @Published var damping: Double { didSet { publish() } }
-
-    @Published private(set) var live: HelperStatus?
-    @Published private(set) var helperInstalled: Bool
+    @Published var stop: Double
+    @Published private(set) var note: Note?
     @Published private(set) var busy = false
-    @Published private(set) var problem: String?
-    @Published private(set) var sipDisabled: Bool
 
-    let model: SpringModel
-    let refreshHz: Double
+    enum Note: Equatable {
+        case needsSIPDisabled
+        case failed(String)
+    }
 
-    private var publishTask: Task<Void, Never>?
+    private var committed: Double
     private var poll: Timer?
-    private var lastLocalEdit = Date.distantPast
 
     init() {
-        refreshHz = Display.mainRefreshRate()
-        model = SpringModel(dt: 1 / refreshHz)
-
         let config = Configuration.load()
-        enabled = config.enabled
-        speed = config.speed
-        usesCustomDamping = config.damping != nil
-        damping = config.damping ?? SpringModel(dt: 1 / refreshHz).damping(forSpeed: config.speed)
+        let index = Speed.presets.firstIndex { abs($0.value - config.speed) < 0.005 } ?? 0
+        let position = Double(config.enabled ? index : 0)
+        stop = position
+        committed = position
 
-        helperInstalled = HelperInstall.isInstalled
-        sipDisabled = SystemIntegrityProtection.isDisabled
-        live = HelperStatus.load()
+        if !SystemIntegrityProtection.isDisabled { note = .needsSIPDisabled }
 
-        poll = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
-            Task { @MainActor in self?.refresh() }
+        poll = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.checkForTrouble() }
         }
     }
 
     deinit { poll?.invalidate() }
 
-    // MARK: - Derived values
+    var isEditable: Bool { note != .needsSIPDisabled && !busy }
 
-    var effectiveDamping: Double { usesCustomDamping ? damping : model.damping(forSpeed: speed) }
+    // MARK: - Committing a change
 
-    var coefficients: (gain: Double, retention: Double) {
-        model.coefficients(speed: speed, damping: usesCustomDamping ? damping : nil)
-    }
+    func commit() {
+        guard note != .needsSIPDisabled, stop != committed else { return }
+        let target = stop
 
-    var response: SpringModel.Response {
-        let c = coefficients
-        return model.simulate(gain: c.gain, retention: c.retention)
-    }
-
-    var stockResponse: SpringModel.Response {
-        model.simulate(gain: SpringModel.stockGain, retention: SpringModel.stockRetention)
-    }
-
-    var presetName: String? { Speed.presets.first { abs($0.value - speed) < 0.005 }?.name }
-
-    /// True when the helper has confirmed the current settings are on Dock.
-    var isLive: Bool {
-        guard enabled, let live, live.applied, live.error == nil else { return false }
-        return abs(live.speed - speed) < 0.02 && abs(live.damping - effectiveDamping) < 0.02
-    }
-
-    // MARK: - Settings
-
-    func refresh() {
-        helperInstalled = HelperInstall.isInstalled
-        live = HelperStatus.load()
-
-        // Settings can also be changed by the command line tool. Adopt what is
-        // on disk, but never while the user is mid-edit and our own write is
-        // still in flight, or the controls would fight the pointer.
-        guard Date().timeIntervalSince(lastLocalEdit) > 1.5 else { return }
-        let config = Configuration.load()
-        if config.enabled != enabled { enabled = config.enabled }
-        if abs(config.speed - speed) > 0.001 { speed = config.speed }
-        if (config.damping != nil) != usesCustomDamping { usesCustomDamping = config.damping != nil }
-        if let d = config.damping, abs(d - damping) > 0.001 { damping = d }
-    }
-
-    /// Slider drags produce a change per frame; the helper only needs the last.
-    private func publish() {
-        lastLocalEdit = Date()
-        publishTask?.cancel()
-        publishTask = Task { [enabled, speed, usesCustomDamping, damping, refreshHz] in
-            try? await Task.sleep(nanoseconds: 150_000_000)
-            guard !Task.isCancelled else { return }
-            var config = Configuration.load()
-            config.enabled = enabled
-            config.speed = speed
-            config.damping = usesCustomDamping ? damping : nil
-            config.lastKnownRefreshHz = refreshHz
-            do {
-                try config.save()
-                await MainActor.run { self.problem = nil }
-            } catch {
-                await MainActor.run { self.problem = "Could not save settings: \(error.localizedDescription)" }
+        guard HelperInstall.isInstalled else {
+            authorise { [weak self] succeeded in
+                guard let self else { return }
+                if succeeded {
+                    self.write(target)
+                    self.committed = target
+                } else {
+                    self.stop = self.committed
+                }
             }
-        }
-    }
-
-    // MARK: - Helper lifecycle
-
-    /// The app cannot install a root job itself, so it asks macOS to run the
-    /// bundled command line tool with administrator rights. One password prompt.
-    func installHelper() { runPrivileged("install", then: true) }
-    func removeHelper() { runPrivileged("uninstall", then: false) }
-
-    private func runPrivileged(_ subcommand: String, then installed: Bool) {
-        guard let tool = Self.bundledCLI() else {
-            problem = "Could not find the spaceswitch command line tool inside the app bundle."
             return
         }
+        write(target)
+        committed = target
+    }
+
+    private func write(_ stop: Double) {
+        let preset = Speed.presets[Int(stop)]
+        var config = Configuration.load()
+        config.speed = preset.value
+        config.enabled = preset.value < Speed.stock
+        config.damping = nil
+        config.lastKnownRefreshHz = Display.mainRefreshRate()
+        do {
+            try config.save()
+            note = nil
+        } catch {
+            note = .failed("Could not save your setting.")
+        }
+    }
+
+    /// Installs the background job. macOS shows its own authorisation prompt, so
+    /// the app never asks for a password itself.
+    private func authorise(completion: @escaping (Bool) -> Void) {
+        guard let tool = Self.commandLineTool() else {
+            note = .failed("SpaceSwitch is missing part of itself. Reinstall it.")
+            return completion(false)
+        }
         busy = true
-        problem = nil
         Task.detached {
             let escaped = tool.path.replacingOccurrences(of: "\"", with: "\\\"")
-            let script = "do shell script \"'\(escaped)' \(subcommand)\" with administrator privileges"
             let process = Process()
             process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
-            process.arguments = ["-e", script]
+            process.arguments = ["-e", "do shell script \"'\(escaped)' install\" with administrator privileges"]
             let pipe = Pipe()
             process.standardError = pipe
             process.standardOutput = Pipe()
             try? process.run()
             let errorText = String(decoding: pipe.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
             process.waitUntilExit()
-            let status = process.terminationStatus
+            let code = process.terminationStatus
 
             await MainActor.run {
                 self.busy = false
-                self.refresh()
-                if status != 0 {
-                    // -128 is the user cancelling the authorisation dialog.
-                    if !errorText.contains("-128") {
-                        self.problem = errorText.trimmingCharacters(in: .whitespacesAndNewlines)
-                    }
-                } else if installed {
-                    self.publish()
+                if code == 0 {
+                    completion(true)
+                } else {
+                    // -128 is the user dismissing the authorisation prompt.
+                    if !errorText.contains("-128") { self.note = .failed("Could not start SpaceSwitch.") }
+                    completion(false)
                 }
             }
+        }
+    }
+
+    /// Surfaces only failures the user can do something about, and only once
+    /// they have persisted past a retry.
+    private func checkForTrouble() {
+        guard note != .needsSIPDisabled, !busy, HelperInstall.isInstalled else { return }
+        guard let live = HelperStatus.load() else { return }
+        if let error = live.error, Date().timeIntervalSince(live.updatedAt) < 30 {
+            note = .failed(error)
+        } else if case .failed = note {
+            note = nil
         }
     }
 
     /// Deliberately does not use `url(forAuxiliaryExecutable:)`: that searches
     /// Contents/MacOS, where a case-insensitive filesystem makes "spaceswitch"
     /// and the bundle executable "SpaceSwitch" the same file.
-    private static func bundledCLI() -> URL? {
-        let candidates = [
-            Bundle.main.bundleURL.appendingPathComponent("Contents/Helpers/spaceswitch"),
-            URL(fileURLWithPath: "/opt/homebrew/bin/spaceswitch"),
-            URL(fileURLWithPath: "/usr/local/bin/spaceswitch"),
-        ]
-        return candidates.first { FileManager.default.isExecutableFile(atPath: $0.path) }
+    private static func commandLineTool() -> URL? {
+        [Bundle.main.bundleURL.appendingPathComponent("Contents/Helpers/spaceswitch"),
+         URL(fileURLWithPath: "/opt/homebrew/bin/spaceswitch"),
+         URL(fileURLWithPath: "/usr/local/bin/spaceswitch")]
+            .first { FileManager.default.isExecutableFile(atPath: $0.path) }
     }
 }
 

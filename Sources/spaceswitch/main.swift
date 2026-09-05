@@ -30,6 +30,7 @@ OPTIONS
 
 COMMANDS
   status               Show what Dock is currently running.
+  config               Show the saved settings and what the helper reports.
   revert               Restore Apple's constants. `killall Dock` also works.
   presets              List the presets and their predicted timings.
   install              Install the helper so the setting survives restarts.
@@ -77,7 +78,7 @@ while index < args.count {
         index += 1
         guard index < args.count, let v = Double(args[index]) else { fail("--speed needs a number") }
         speedArg = v
-    case "status", "revert", "presets", "install", "uninstall", "config": command = arg
+    case "status", "revert", "presets", "install", "uninstall", "config", "daemon": command = arg
     default:
         if let v = Double(arg) { speedArg = v }
         else if let v = preset(named: arg) { speedArg = v }
@@ -141,6 +142,9 @@ do {
                          (p.name as NSString).utf8String!, p.value, model.damping(forSpeed: p.value),
                          r.arrival * 1000, r.settle * 1000, r.arrival / stock.arrival))
         }
+
+    case "daemon":
+        Daemon().run()
 
     case "config":
         let config = Configuration.load()
