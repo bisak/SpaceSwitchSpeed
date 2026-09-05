@@ -35,7 +35,13 @@ public struct HelperStatus: Codable, Equatable, Sendable {
 
     public static func load() -> HelperStatus? {
         guard let data = try? Data(contentsOf: url) else { return nil }
-        return try? JSONDecoder().decode(HelperStatus.self, from: data)
+        return try? decoder.decode(HelperStatus.self, from: data)
+    }
+
+    private static var decoder: JSONDecoder {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return decoder
     }
 
     public func save() {

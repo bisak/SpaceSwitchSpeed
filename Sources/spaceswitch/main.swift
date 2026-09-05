@@ -77,7 +77,7 @@ while index < args.count {
         index += 1
         guard index < args.count, let v = Double(args[index]) else { fail("--speed needs a number") }
         speedArg = v
-    case "status", "revert", "presets", "install", "uninstall": command = arg
+    case "status", "revert", "presets", "install", "uninstall", "config": command = arg
     default:
         if let v = Double(arg) { speedArg = v }
         else if let v = preset(named: arg) { speedArg = v }
@@ -140,6 +140,27 @@ do {
             print(String(format: "  %-10s  %.2f    %.3f     %4.0f ms   %4.0f ms   %.2fx",
                          (p.name as NSString).utf8String!, p.value, model.damping(forSpeed: p.value),
                          r.arrival * 1000, r.settle * 1000, r.arrival / stock.arrival))
+        }
+
+    case "config":
+        let config = Configuration.load()
+        print("settings   \(Configuration.url.path)")
+        print("  exists   \(FileManager.default.fileExists(atPath: Configuration.url.path))")
+        print("  readable \(FileManager.default.isReadableFile(atPath: Configuration.url.path))")
+        print("  enabled  \(config.enabled)")
+        print(String(format: "  speed    %.4f", config.speed))
+        print("  damping  \(config.damping.map { String(format: "%.4f", $0) } ?? "automatic")")
+        print("  refresh  \(config.lastKnownRefreshHz.map { String(format: "%.0f Hz", $0) } ?? "unrecorded")")
+        print("")
+        print("helper     \(HelperInstall.plistURL.path)")
+        print("  installed \(HelperInstall.isInstalled)")
+        if let live = HelperStatus.load() {
+            print(String(format: "  reported  speed %.4f damping %.4f on Dock %d",
+                         live.speed, live.damping, live.dockPID))
+            print("  updated   \(live.updatedAt)")
+            if let error = live.error { print("  error     \(error)") }
+        } else {
+            print("  reported  nothing yet")
         }
 
     case "status":

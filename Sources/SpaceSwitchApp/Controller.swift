@@ -29,6 +29,7 @@ final class Controller: ObservableObject {
 
     private var publishTask: Task<Void, Never>?
     private var poll: Timer?
+    private var lastLocalEdit = Date.distantPast
 
     init() {
         refreshHz = Display.mainRefreshRate()
@@ -81,10 +82,21 @@ final class Controller: ObservableObject {
     func refresh() {
         helperInstalled = HelperInstall.isInstalled
         live = HelperStatus.load()
+
+        // Settings can also be changed by the command line tool. Adopt what is
+        // on disk, but never while the user is mid-edit and our own write is
+        // still in flight, or the controls would fight the pointer.
+        guard Date().timeIntervalSince(lastLocalEdit) > 1.5 else { return }
+        let config = Configuration.load()
+        if config.enabled != enabled { enabled = config.enabled }
+        if abs(config.speed - speed) > 0.001 { speed = config.speed }
+        if (config.damping != nil) != usesCustomDamping { usesCustomDamping = config.damping != nil }
+        if let d = config.damping, abs(d - damping) > 0.001 { damping = d }
     }
 
     /// Slider drags produce a change per frame; the helper only needs the last.
     private func publish() {
+        lastLocalEdit = Date()
         publishTask?.cancel()
         publishTask = Task { [enabled, speed, usesCustomDamping, damping, refreshHz] in
             try? await Task.sleep(nanoseconds: 150_000_000)
