@@ -16,7 +16,7 @@ DMG     = build/SpaceSwitchSpeed-$(VERSION).dmg
 XCB = xcodebuild -project $(PROJECT) -scheme $(SCHEME) -derivedDataPath $(DERIVED) \
       -destination 'platform=macOS,arch=arm64' -quiet
 
-.PHONY: help app run install test lint format check-dock fetch-dock icon banner background release clean ci
+.PHONY: help app run install test lint format check-dock fetch-dock icon banner background release clean verify ci
 .NOTPARALLEL:
 
 help: ## Show this help
@@ -63,10 +63,13 @@ release: ci ## Verify everything, then package the app as a disk image for a rel
 	@Scripts/make-dmg.sh "$(APP)" $(VERSION) $(DMG)
 	@echo "wrote $(DMG) (upload this to the Releases page)"
 
-clean: ## Remove build products
-	@rm -rf .build build
+clean: ## Remove build products, keeping the Dock corpus that fetch-dock builds
+	@rm -rf .build
+	@[ ! -d build ] || find build -mindepth 1 -maxdepth 1 ! -name docks -exec rm -rf {} +
 
-ci: lint test check-dock app ## Run every check: formatting, tests, this Mac's Dock, the app
+verify: lint test app ## Lint, test, build the app, and check its signature and its helper
 	@codesign --verify --deep --strict "$(APP)"
 	@"$(APP)/Contents/Helpers/spaceswitchspeed" >/dev/null
+
+ci: verify check-dock ## Everything verify does, plus this Mac's Dock
 	@echo "ok"

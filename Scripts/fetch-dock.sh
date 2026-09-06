@@ -73,7 +73,7 @@ if zip64 >= 0:
 directory = fetch(offset, offset + size - 1)
 best, position = None, 0
 while position < len(directory) and directory[position:position + 4] == b"PK\x01\x02":
-    compressed, = struct.unpack_from("<I", directory, position + 20)
+    compressed, uncompressed = struct.unpack_from("<II", directory, position + 20)
     name_len, extra_len, comment_len = struct.unpack_from("<HHH", directory, position + 28)
     local, = struct.unpack_from("<I", directory, position + 42)
     name = directory[position + 46:position + 46 + name_len].decode("utf-8", "replace")
@@ -83,7 +83,7 @@ while position < len(directory) and directory[position:position + 4] == b"PK\x01
         tag, field = struct.unpack_from("<HH", extra, cursor)
         if tag == 1:
             values, at = [], cursor + 4
-            for current in (0, compressed, local):
+            for current in (uncompressed, compressed, local):
                 if current == 0xFFFFFFFF and at + 8 <= len(extra):
                     values.append(struct.unpack_from("<Q", extra, at)[0]); at += 8
                 else:
