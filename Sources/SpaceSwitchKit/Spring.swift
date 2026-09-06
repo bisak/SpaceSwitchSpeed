@@ -30,10 +30,21 @@ public struct SpringModel: Sendable {
     /// `|velocity|` below which Dock considers the animation finished.
     public static let settleEpsilon = 0.01
 
+    /// Frame interval used to convert between the loop's per-frame arithmetic
+    /// and seconds.
+    ///
+    /// The coefficients this produces barely depend on it — measured across 60,
+    /// 120 and 144 Hz the gain moves half a percent and the retention not at
+    /// all, because `v = gain * error + retention * v` carries no timestep and
+    /// so fixes the dynamics per frame rather than per second. It is therefore
+    /// a reporting reference, not something worth detecting: only the
+    /// millisecond figures shown to the user depend on it.
+    public static let referenceRefresh = 120.0
+
     /// Frame interval in seconds.
     public let dt: Double
 
-    public init(dt: Double) {
+    public init(dt: Double = 1 / SpringModel.referenceRefresh) {
         precondition(dt > 0, "frame interval must be positive")
         self.dt = dt
     }

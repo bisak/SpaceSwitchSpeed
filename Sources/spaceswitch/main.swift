@@ -23,7 +23,7 @@ let usage = """
                            bounces; 1.0 is critical; above 1.0 eases in. Default
                            follows your display's stock value, easing toward
                            critical as speed increases.
-      --refresh <hz>       Assume this refresh rate instead of detecting it.
+      --refresh <hz>       Report predicted times for this refresh rate.
       --dry-run            Print what would change without touching Dock.
       --keep               With `uninstall`, leave the running Dock as it is.
       --json               Machine-readable output.
@@ -152,7 +152,7 @@ func emit(_ status: Status, json: Bool) {
 do {
     switch command {
     case "presets":
-        let model = SpringModel(dt: 1 / (refreshArg ?? Display.mainRefreshRate()))
+        let model = SpringModel(dt: 1 / (refreshArg ?? SpringModel.referenceRefresh))
         let stock = model.simulate(gain: SpringModel.stockGain, retention: SpringModel.stockRetention)
         print(String(format: "Predicted for a %.0f Hz display:\n", 1 / model.dt))
         print("  preset      speed   damping   arrives   settles   vs stock")
@@ -204,7 +204,6 @@ do {
         config.enabled = true
         if let speed = speedArg { config.speed = speed }
         config.damping = dampingArg
-        config.lastKnownRefreshHz = refreshArg ?? Display.mainRefreshRate()
         try config.save()
         print(
             """
@@ -245,7 +244,7 @@ do {
                     Speed.range.upperBound))
         }
         if dryRun {
-            let model = SpringModel(dt: 1 / (refreshArg ?? Display.mainRefreshRate()))
+            let model = SpringModel(dt: 1 / (refreshArg ?? SpringModel.referenceRefresh))
             let (g, a) = model.coefficients(speed: speed, damping: dampingArg)
             let r = model.simulate(gain: g, retention: a)
             let s = model.simulate(gain: SpringModel.stockGain, retention: SpringModel.stockRetention)
@@ -266,7 +265,6 @@ do {
         config.enabled = true
         config.speed = speed
         config.damping = dampingArg
-        config.lastKnownRefreshHz = status.refreshHz
         try? config.save()
         emit(status, json: json)
     }

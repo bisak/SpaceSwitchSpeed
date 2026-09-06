@@ -79,18 +79,26 @@ change disappears the moment Dock restarts.
 
 There is a detailed write-up in [docs/REVERSE-ENGINEERING.md](docs/REVERSE-ENGINEERING.md).
 
-### One slider, and why it self-calibrates
+### One slider
 
-`Δt` is your display's frame interval, so Apple's fixed constants describe a
-*different* spring on every refresh rate. Their damping ratio is 0.91 on a 60 Hz Mac
-(slightly bouncy) and 1.29 on a 120 Hz ProMotion display (eases in). Nobody notices,
-but it means a naive "set these numbers" tool would feel wrong on most Macs.
+The slider scales the spring's time constant. `1.00` writes back Apple's own
+constants exactly, and `0.50` really is half — the presets come out at 1.00, 0.76,
+0.50, 0.34 and 0.21 of stock.
 
-SpaceSwitch works in refresh-independent terms instead — a time constant and a damping
-ratio — and converts back for whatever display you actually have. The speed slider
-scales the time constant; damping stays at whatever your display makes it.
+It needs no per-machine calibration, which is worth saying because it looks like it
+should. `Δt` is your display's frame interval, so Apple's fixed constants do describe
+a slightly different spring on every refresh rate — damping ratio 0.91 on a 60 Hz Mac
+against 1.29 on 120 Hz ProMotion. But the velocity step carries no timestep:
 
-So `1.00` reproduces stock **exactly** on any Mac, and `0.50` really is half.
+```
+velocity = gain × (target − position) + retention × velocity
+```
+
+so the coefficients fix the dynamics *per frame*, and `position += Δt × velocity`
+compensates for the rest. Solving for 60, 120 or 144 Hz moves the gain by half a
+percent and the retention not at all, and the resulting animation takes the same
+wall-clock time either way. Mixed-refresh multi-monitor setups need no special
+handling for the same reason.
 
 | Preset | Speed | 120 Hz arrival | 60 Hz arrival | Overshoot |
 |---|---|---|---|---|
@@ -165,8 +173,9 @@ sudo spaceswitch install         # install the helper, survives restarts
 sudo spaceswitch uninstall       # remove it and revert
 ```
 
-`--json` gives machine-readable output. `--refresh <hz>` overrides display detection,
-which is useful on multi-monitor setups with mixed refresh rates.
+`--json` gives machine-readable output. `--refresh <hz>` only changes the refresh rate
+the predicted millisecond figures are reported for; it does not change what is written
+to Dock.
 
 ## Disabling System Integrity Protection
 
@@ -255,7 +264,7 @@ Worth being explicit, because "patches Dock" sounds alarming:
 |---|---|
 | Architecture | Apple Silicon (arm64e) only. Intel Macs are not supported. |
 | macOS | Built and verified on macOS 26. Should work on 13+ wherever the integrator shape matches; it refuses safely when it doesn't. |
-| Displays | Detects the main display's refresh rate. On multi-monitor setups with different refresh rates, tuning is exact for one of them — use `--refresh` to choose. |
+| Displays | Nothing to configure. The coefficients are per-frame, so refresh rate and multi-monitor setups make no practical difference. |
 
 ## Uninstall
 

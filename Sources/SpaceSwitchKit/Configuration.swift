@@ -15,18 +15,13 @@ public struct Configuration: Codable, Equatable, Sendable {
     /// Overrides the damping ratio derived from `speed`. Nil means "follow the
     /// single-knob rule", which is what the app exposes by default.
     public var damping: Double?
-    /// Recorded by whichever component last ran inside a login session, and
-    /// used only when the helper cannot read the refresh rate itself.
-    public var lastKnownRefreshHz: Double?
 
     public init(
-        enabled: Bool = true, speed: Double = 0.5, damping: Double? = nil,
-        lastKnownRefreshHz: Double? = nil
+        enabled: Bool = true, speed: Double = 0.5, damping: Double? = nil
     ) {
         self.enabled = enabled
         self.speed = speed.clamped(to: Speed.range)
         self.damping = damping
-        self.lastKnownRefreshHz = lastKnownRefreshHz
     }
 
     public static let directory = URL(

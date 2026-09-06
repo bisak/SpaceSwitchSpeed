@@ -72,10 +72,15 @@ This matters more than it looks. Because `dt` varies but the coefficients do not
 | 144 Hz | 1.412 | 0.130 s | overdamped |
 
 A 60 Hz Mac's Space switch is genuinely faster and slightly bouncier than a 120 Hz
-one. Any tool that writes fixed coefficients would therefore feel wrong on most
-hardware. SpaceSwitch instead characterises the shipped constants into (ζ, τ) for the
-display in use, moves those, and converts back — so `speed = 1.0` reproduces stock
-exactly everywhere.
+one, from the same constants.
+
+It matters less than it looks for changing them, though, and that is worth recording
+because the opposite is the intuitive conclusion. The velocity step carries no
+timestep, so the coefficients fix the dynamics per frame and `position += dt · velocity`
+absorbs the difference. Solving the same speed setting for 60, 120 and 144 Hz gives
+gains of 6.7133, 6.7467 and 6.7522 with identical retention, and the animation takes
+the same wall-clock time on any of them. SpaceSwitch therefore does not detect the
+refresh rate at all; it uses a fixed reference purely to report predicted times.
 
 The discrete loop's characteristic polynomial is `z² − (1 + a − dt·g)z + a`, whose roots
 are real above roughly 75 Hz and complex below it. Both branches must be handled or the

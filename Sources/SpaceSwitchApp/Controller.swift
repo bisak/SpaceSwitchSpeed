@@ -81,7 +81,6 @@ final class Controller: ObservableObject {
         config.speed = preset.value
         config.enabled = preset.value < Speed.stock
         config.damping = damping
-        config.lastKnownRefreshHz = Display.mainRefreshRate()
 
         // With a helper running, saving is the whole job: it notices the change
         // and applies it within half a second.

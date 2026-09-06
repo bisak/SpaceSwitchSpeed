@@ -28,7 +28,7 @@ public final class Engine {
     public init(refreshHz: Double? = nil) throws {
         target = try DockTarget()
         image = try MachOImage(target: target)
-        model = SpringModel(dt: 1.0 / (refreshHz ?? Display.mainRefreshRate()))
+        model = SpringModel(dt: 1.0 / (refreshHz ?? SpringModel.referenceRefresh))
     }
 
     public var refreshHz: Double { 1.0 / model.dt }
