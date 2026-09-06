@@ -60,6 +60,7 @@ private struct OptionsSheet: View {
     @State private var automatic: Bool
     @State private var damping: Double
     @State private var runsAtLogin: Bool
+    @State private var confirmingRemoval = false
 
     init(controller: Controller) {
         self.controller = controller
@@ -92,6 +93,10 @@ private struct OptionsSheet: View {
                         }
                     }
                 }
+
+                Section {
+                    Button("Remove SpaceSwitch…", role: .destructive) { confirmingRemoval = true }
+                }
             }
             .formStyle(.grouped)
 
@@ -112,6 +117,16 @@ private struct OptionsSheet: View {
         }
         .frame(width: 460)
         .fixedSize(horizontal: false, vertical: true)
+        .confirmationDialog(
+            "Remove SpaceSwitch?", isPresented: $confirmingRemoval, titleVisibility: .visible
+        ) {
+            Button("Remove", role: .destructive) { controller.removeEverything() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text(
+                "Space switching goes back to normal and nothing is left behind. SpaceSwitch will quit, and you can move it to the Trash."
+            )
+        }
         .onChange(of: automatic) { isAutomatic in
             if isAutomatic {
                 damping = controller.model.damping(forSpeed: Speed.presets[Int(controller.stop)].value)

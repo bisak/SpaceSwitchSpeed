@@ -231,11 +231,11 @@ do {
             try? config.save()
             if let engine = try? Engine(refreshHz: refreshArg) { try? engine.revert() }
         }
-        try HelperInstall.uninstall()
+        try HelperInstall.uninstall(purge: !keepCurrent)
         print(
             keepCurrent
                 ? "Helper removed. Dock keeps this setting until it restarts."
-                : "Helper removed and Dock restored to stock.")
+                : "Removed. Dock is back to stock and nothing is left in /Library.")
 
     default:
         guard let speed = speedArg else {

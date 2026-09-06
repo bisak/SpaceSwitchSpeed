@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Biser Atanasov. Licensed under AGPL-3.0-or-later.
 // See LICENSE. This program comes with ABSOLUTELY NO WARRANTY.
 
+import AppKit
 import Combine
 import Foundation
 import SpaceSwitchKit
@@ -84,6 +85,19 @@ final class Controller: ObservableObject {
             // stops coming back once Dock or the Mac restarts.
             guard await authorise(enabled ? "install" : "uninstall --keep") else { return }
             runsAtLogin = HelperInstall.isInstalled
+        }
+    }
+
+    /// Takes SpaceSwitch off the machine: Dock back to stock, the helper and
+    /// every file it wrote gone, and this app's own preferences with them. All
+    /// that is left is the app itself, for the user to move to the Trash.
+    func removeEverything() {
+        Task {
+            guard await authorise("uninstall") else { return }
+            if let identifier = Bundle.main.bundleIdentifier {
+                UserDefaults.standard.removePersistentDomain(forName: identifier)
+            }
+            NSApp.terminate(nil)
         }
     }
 

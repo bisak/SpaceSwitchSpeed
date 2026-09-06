@@ -12,36 +12,37 @@ import Foundation
 /// to notice Dock restarting — at login, after a crash, after `killall Dock` —
 /// and put it back. That is this.
 ///
-/// It polls rather than watching for events. Settings are written atomically,
-/// which replaces the file's inode and leaves an inode watch permanently deaf;
-/// a half-second poll of a seventy-byte file costs nothing and cannot go deaf.
-public final class Daemon {
-    private let queue = DispatchQueue(label: "com.bisak.spaceswitch.daemon")
-    private var timer: DispatchSourceTimer?
+/// It waits for events rather than polling. Locating Dock means walking every
+/// process in the system, which is far too expensive to repeat on a timer, so
+/// it is done once and then only when the process it found actually exits.
+/// Every stored property is read and written only on `queue`, which is what
+/// makes the unchecked conformance sound: `run()` hands off to the queue before
+/// touching anything, and every event source delivers onto it.
+public final class Daemon: @unchecked Sendable {
+    private let queue = DispatchQueue(label: "com.bisak.spaceswitch.daemon", qos: .utility)
+    private var dockWatch: DispatchSourceProcess?
+    private var settingsWatch: DispatchSourceFileSystemObject?
+    private var heartbeat: DispatchSourceTimer?
+
     private var lastApplied: Configuration?
-    private var lastDockPID: pid_t = 0
+    private var dockPID: pid_t = 0
 
     public init() {}
 
     public func run() -> Never {
         try? Configuration.prepareDirectory()
-        queue.async { self.reconcile() }
-
-        let timer = DispatchSource.makeTimerSource(queue: queue)
-        timer.schedule(deadline: .now() + 0.5, repeating: 0.5)
-        timer.setEventHandler { [weak self] in self?.reconcile() }
-        timer.resume()
-        self.timer = timer
-
+        queue.async {
+            self.reconcile(because: "startup")
+            self.watchSettings()
+            self.startHeartbeat()
+        }
         dispatchMain()
     }
 
-    private func reconcile() {
-        let config = Configuration.load()
-        let dock = DockTarget.findDock() ?? 0
-        guard config != lastApplied || dock != lastDockPID else { return }
-        guard dock != 0 else { return }
+    // MARK: - Applying
 
+    private func reconcile(because reason: String) {
+        let config = Configuration.load()
         do {
             let engine = try Engine(refreshHz: config.lastKnownRefreshHz)
             let status: Status
@@ -52,12 +53,16 @@ public final class Daemon {
                 status = try engine.status()
             }
             lastApplied = config
-            lastDockPID = status.dockPID
+            dockPID = status.dockPID
             publish(status, error: nil)
+            watchDock(status.dockPID)
+        } catch SpaceSwitchError.dockNotRunning {
+            // Dock is mid-restart; it will be back in a moment.
+            queue.asyncAfter(deadline: .now() + 1) { self.reconcile(because: reason) }
         } catch {
-            // Leave lastApplied untouched so the next tick retries.
-            lastDockPID = 0
+            dockPID = 0
             publish(nil, error: (error as? SpaceSwitchError)?.description ?? "\(error)")
+            queue.asyncAfter(deadline: .now() + 5) { self.reconcile(because: "retry") }
         }
     }
 
@@ -73,5 +78,60 @@ public final class Daemon {
             updatedAt: Date(),
             error: error
         ).save()
+    }
+
+    // MARK: - Waiting
+
+    /// Costs nothing while Dock is alive; the kernel wakes us when it exits.
+    private func watchDock(_ pid: pid_t) {
+        dockWatch?.cancel()
+        guard pid > 0 else { return }
+        let source = DispatchSource.makeProcessSource(identifier: pid, eventMask: .exit, queue: queue)
+        source.setEventHandler { [weak self] in
+            guard let self else { return }
+            self.dockPID = 0
+            self.queue.asyncAfter(deadline: .now() + 0.5) { self.reconcile(because: "Dock restarted") }
+        }
+        source.resume()
+        dockWatch = source
+    }
+
+    /// Watches the settings *directory*, not the file. Settings are written
+    /// atomically, which replaces the file's inode and would leave a watch on
+    /// the file permanently deaf after the first change. A directory's inode is
+    /// stable, so this is armed once and never needs rebuilding.
+    private func watchSettings() {
+        let descriptor = open(Configuration.directory.path, O_EVTONLY)
+        guard descriptor >= 0 else { return }
+        let source = DispatchSource.makeFileSystemObjectSource(
+            fileDescriptor: descriptor, eventMask: [.write], queue: queue)
+        source.setEventHandler { [weak self] in self?.applyIfSettingsChanged() }
+        // Sole owner of the descriptor, so it cannot be closed twice.
+        source.setCancelHandler { close(descriptor) }
+        source.resume()
+        settingsWatch = source
+    }
+
+    /// The daemon writes its own status into the watched directory, so every
+    /// event has to be compared rather than acted on blindly.
+    private func applyIfSettingsChanged() {
+        guard Configuration.load() != lastApplied else { return }
+        reconcile(because: "settings changed")
+    }
+
+    /// Backstop for anything the event sources miss. It checks liveness with a
+    /// single signal-less `kill`, and carries generous leeway so the kernel can
+    /// coalesce it with other timers rather than waking the CPU on its own.
+    private func startHeartbeat() {
+        let timer = DispatchSource.makeTimerSource(queue: queue)
+        timer.schedule(deadline: .now() + 60, repeating: 60, leeway: .seconds(30))
+        timer.setEventHandler { [weak self] in
+            guard let self else { return }
+            if self.dockPID == 0 || kill(self.dockPID, 0) != 0 {
+                self.reconcile(because: "heartbeat")
+            }
+        }
+        timer.resume()
+        heartbeat = timer
     }
 }
