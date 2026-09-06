@@ -9,36 +9,33 @@ struct SettingsView: View {
     @ObservedObject var controller: Controller
 
     var body: some View {
-        Form {
-            Section {
-                LabeledContent("Switching speed") {
-                    // The value labels belong to the slider rather than to a
-                    // stack around it, so the framework aligns them with the
-                    // track instead of with the tick marks below it.
-                    Slider(
-                        value: $controller.stop,
-                        in: 0...Double(Speed.presets.count - 1),
-                        step: 1
-                    ) {
-                        Text("Switching speed")
-                    } minimumValueLabel: {
-                        Image(systemName: "tortoise.fill").foregroundStyle(.secondary)
-                    } maximumValueLabel: {
-                        Image(systemName: "hare.fill").foregroundStyle(.secondary)
-                    } onEditingChanged: { editing in
-                        if !editing { controller.commit() }
-                    }
-                    .labelsHidden()
-                    .imageScale(.large)
-                    .frame(width: 270)
-                    .padding(.vertical, 4)
-                    .disabled(!controller.isEditable)
-                }
-            } footer: {
-                if let note = controller.note { NoteView(note: note) }
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("Switching speed")
+                Spacer()
+                Text(controller.preset.name)
+                    .foregroundStyle(.secondary)
             }
+
+            Slider(
+                value: $controller.stop,
+                in: 0...Double(Speed.presets.count - 1),
+                step: 1
+            ) {
+                Text("Switching speed")
+            } minimumValueLabel: {
+                Image(systemName: "tortoise.fill").foregroundStyle(.secondary)
+            } maximumValueLabel: {
+                Image(systemName: "hare.fill").foregroundStyle(.secondary)
+            } onEditingChanged: { editing in
+                if !editing { controller.commit() }
+            }
+            .labelsHidden()
+            .disabled(!controller.isEditable)
+
+            if let note = controller.note { NoteView(note: note) }
         }
-        .formStyle(.grouped)
+        .padding(20)
         .confirmationDialog(
             "Remove SpaceSwitch?", isPresented: $controller.confirmingRemoval,
             titleVisibility: .visible
@@ -55,6 +52,9 @@ struct SettingsView: View {
 
 /// The window says nothing at all unless something needs the user's attention.
 private struct NoteView: View {
+    static let sipHelp = URL(
+        string: "https://github.com/bisak/spaceswitch#disabling-system-integrity-protection")!
+
     let note: Controller.Note
 
     var body: some View {
@@ -62,14 +62,12 @@ private struct NoteView: View {
             Image(systemName: "exclamationmark.triangle.fill")
                 .foregroundStyle(.orange)
                 .imageScale(.small)
-            Text(message)
-                .fixedSize(horizontal: false, vertical: true)
-            if case .needsSIPDisabled = note {
-                Link(
-                    "Learn More…",
-                    destination: URL(
-                        string: "https://github.com/bisak/spaceswitch#disabling-system-integrity-protection")!
-                )
+            VStack(alignment: .leading, spacing: 2) {
+                Text(message)
+                    .fixedSize(horizontal: false, vertical: true)
+                if case .needsSIPDisabled = note {
+                    Link("Learn More…", destination: NoteView.sipHelp)
+                }
             }
             Spacer(minLength: 0)
         }

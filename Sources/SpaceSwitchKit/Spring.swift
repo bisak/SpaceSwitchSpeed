@@ -169,14 +169,10 @@ public struct SpringModel: Sendable {
     }
 }
 
-/// The user-facing speed axis: a multiplier on the display's stock pace.
+/// The user-facing speed axis: a multiplier on the stock pace.
 public enum Speed {
     public static let range = 0.2...1.0
 
-    /// Peak overshoot the bounce control offers. Zero means the automatic
-    /// damping, which never overshoots; past this the motion starts to look
-    /// like a mistake rather than a flourish.
-    public static let bounceRange = 0.0...0.22
     public static let stock = 1.0
 
     public struct Preset: Sendable {

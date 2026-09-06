@@ -11,16 +11,13 @@ anywhere to change it. SpaceSwitch adds the slider Apple never shipped.
 [![License](https://img.shields.io/badge/license-AGPL--3.0-blue)](LICENSE)
 
 ```
-$ spaceswitch 0.35
+$ sudo spaceswitch 0.35
 SpaceSwitch is active on Dock (pid 9226).
 
-  display        120 Hz  (frame interval 0.0083 s)
-  speed          0.35  of stock
-  damping        1.101  (eases in)
-
-  arrives in     125 ms   (stock 317 ms, 0.39x)
-  settles in     358 ms   (stock 883 ms)
-  overshoot      0.0%
+  speed        0.35 of stock
+  arrives in   108 ms (stock 317 ms)
+  settles in   350 ms
+  gain 11.969785  retention 0.353613
 ```
 
 ---
@@ -153,10 +150,9 @@ Everything after that is silent, including putting the setting back whenever Doc
 restarts. Sliding all the way back to Default turns SpaceSwitch off entirely, and
 **SpaceSwitch → Remove SpaceSwitch…** takes it off the machine.
 
-There is nothing else to configure. Damping is chosen for you from your display's
-refresh rate and the speed you picked, because every setting that overshoots looks
-like a glitch rather than a flourish — `--damping` on the command line is there if
-you want to prove that to yourself.
+There is nothing else to configure. Damping stays at whatever Apple's own constants
+imply, because every value that differs enough to notice overshoots, and a desktop
+that slides past and springs back reads as a glitch rather than a flourish.
 
 ### Command line
 

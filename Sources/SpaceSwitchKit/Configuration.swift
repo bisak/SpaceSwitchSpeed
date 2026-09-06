@@ -13,9 +13,7 @@ public struct Configuration: Codable, Equatable, Sendable {
     public var enabled: Bool
     public var speed: Double
 
-    public init(
-        enabled: Bool = true, speed: Double = 0.5, damping: Double? = nil
-    ) {
+    public init(enabled: Bool = true, speed: Double = 0.5) {
         self.enabled = enabled
         self.speed = speed.clamped(to: Speed.range)
     }

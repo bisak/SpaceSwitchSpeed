@@ -7,13 +7,11 @@ import Combine
 import Foundation
 import SpaceSwitchKit
 
-/// Backs the controls the window has.
+/// Backs the one control the window has.
 ///
 /// Changing Dock needs root, which the app does not have. Rather than making
 /// that the user's problem, the first change they make authorises a background
-/// helper once and everything after it is silent. Without that helper each
-/// change costs an authorisation prompt of its own, which is what turning off
-/// "apply after restarting" trades away.
+/// helper once, and everything after it is silent.
 @MainActor
 final class Controller: ObservableObject {
     @Published var stop: Double
@@ -49,6 +47,9 @@ final class Controller: ObservableObject {
     deinit { poll?.cancel() }
 
     var isEditable: Bool { note != .needsSIPDisabled && !busy }
+
+    /// The stop the slider is resting on, named as the command line names it.
+    var preset: Speed.Preset { Speed.presets[Int(stop)] }
 
     // MARK: - Changing the setting
 

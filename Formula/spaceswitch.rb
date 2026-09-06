@@ -23,9 +23,9 @@ class Spaceswitch < Formula
       SpaceSwitch writes to the running Dock process, which macOS only permits with
       System Integrity Protection disabled AND root privileges. Both are required:
 
-        csrutil status        # must report "disabled" (change it from Recovery)
-        sudo spaceswitch      # show what Dock is running now
-        sudo spaceswitch 0.5  # set the speed
+        csrutil status         # must report "disabled" (change it from Recovery)
+        sudo spaceswitch 0.5   # set the speed
+        spaceswitch status     # see what is applied
 
       To keep the setting across Dock restarts and reboots:
 
@@ -37,7 +37,7 @@ class Spaceswitch < Formula
   end
 
   test do
-    assert_match "preset", shell_output("#{bin}/spaceswitch presets --refresh 120")
-    assert_match "arrives in", shell_output("#{bin}/spaceswitch 0.5 --dry-run")
+    assert_match "preset", shell_output("#{bin}/spaceswitch presets")
+    assert_match "Balanced", shell_output("#{bin}/spaceswitch presets")
   end
 end

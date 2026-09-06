@@ -12,7 +12,7 @@ struct SpaceSwitchApp: App {
     var body: some Scene {
         Window("Space Switching", id: "main") {
             SettingsView(controller: controller)
-                .frame(width: 480)
+                .frame(width: 360)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .windowResizability(.contentSize)
