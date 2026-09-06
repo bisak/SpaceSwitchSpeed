@@ -59,47 +59,37 @@ private struct OptionsSheet: View {
 
     @State private var automatic: Bool
     @State private var damping: Double
-
-    private var runsAtLogin: Binding<Bool> {
-        Binding(get: { controller.runsAtLogin }, set: { controller.setRunsAtLogin($0) })
-    }
+    @State private var runsAtLogin: Bool
 
     init(controller: Controller) {
         self.controller = controller
         _automatic = State(initialValue: controller.damping == nil)
         _damping = State(initialValue: controller.effectiveDamping)
+        _runsAtLogin = State(initialValue: controller.runsAtLogin)
     }
 
     var body: some View {
         VStack(spacing: 0) {
             Form {
                 Section {
-                    Toggle("Apply after restarting", isOn: runsAtLogin)
-                } footer: {
-                    Text(
-                        "The setting lives in Dock's memory, so it is cleared whenever Dock or your Mac restarts. A small background helper puts it back."
-                    )
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.leading)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                }
-
-                Section {
-                    Toggle("Set damping automatically", isOn: $automatic)
-                    LabeledContent("Damping") {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Slider(value: $damping, in: 0.6...1.6)
-                            HStack {
-                                Text("Springy")
-                                Spacer()
-                                Text("Smooth")
+                    Toggle("Apply after restarting", isOn: $runsAtLogin)
+                    Toggle("Set damping automatically", isOn: $automatic.animation(.default))
+                    // Revealed rather than greyed out: a control the user
+                    // cannot touch is worse than one that is not there.
+                    if !automatic {
+                        LabeledContent("Damping") {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Slider(value: $damping, in: 0.6...1.6)
+                                HStack {
+                                    Text("Springy")
+                                    Spacer()
+                                    Text("Smooth")
+                                }
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
                             }
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .frame(width: 240)
                         }
-                        .frame(width: 240)
-                        .disabled(automatic)
                     }
                 }
             }
@@ -111,6 +101,8 @@ private struct OptionsSheet: View {
                 Button("Cancel") { dismiss() }
                     .keyboardShortcut(.cancelAction)
                 Button("OK") {
+                    // Everything here commits together, so Cancel really cancels.
+                    controller.setRunsAtLogin(runsAtLogin)
                     controller.setDamping(automatic ? nil : damping)
                     dismiss()
                 }
