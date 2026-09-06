@@ -241,6 +241,7 @@ build. `make check-dock` does the same for the Dock on your own Mac.
 | 26.2 (25C56) | 2427.2.4 | works |
 | 26.4 (25E246) | 2427.4.7 | works |
 | 26.6.2 (25G83) | 2427.6 | works |
+| 27.0 beta 8 (26A5425a) | 2571.0.6.402 | works |
 
 ## FAQ
 

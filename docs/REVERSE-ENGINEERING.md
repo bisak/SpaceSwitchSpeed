@@ -160,6 +160,7 @@ from Apple's publicly distributed restore images — `make fetch-dock MACOS=15.0
 | 26.2 (25C56) | 2427.2.4 | reloaded and stored | `fmul dW, dN, dDT` | `movi d3, #0` |
 | 26.4 (25E246) | 2427.4.7 | reloaded and stored | `fmul dW, dDT, dN` | `movi.2d v3, #0` |
 | 26.6.2 (25G83) | 2427.6 | reloaded and stored | `fmul dW, dDT, dN` | `movi.2d v3, #0` |
+| 27.0 beta 8 (26A5425a) | 2571.0.6.402 | reloaded and stored | `fmul dW, dDT, dN` | `movi.2d v3, #0` |
 
 Every one of those computes the same thing. The operands of a commutative multiply
 swap, the velocity is sometimes kept in a register across iterations instead of being
