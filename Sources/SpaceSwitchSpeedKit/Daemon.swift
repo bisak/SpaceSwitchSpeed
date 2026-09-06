@@ -15,10 +15,11 @@ import os
 /// and put it back. That is this.
 ///
 /// It waits for events rather than polling: a Dock exiting, the settings
-/// changing, the console user changing. Whatever cannot be done yet is retried
-/// with a backoff that settles at every 15 seconds, and a status that has not
-/// changed is not rewritten, so a helper that cannot do its job — after SIP's
-/// debugging restrictions were turned back on, say — costs nothing to keep around.
+/// changing, the console user changing. A heartbeat once a minute, with generous
+/// leeway, backstops those and looks for the app. Whatever cannot be done yet is
+/// retried with a backoff that settles at every 15 seconds, and a status that has
+/// not changed is not rewritten, so a helper that cannot do its job — after SIP's
+/// debugging restrictions were turned back on, say — costs little to keep around.
 ///
 /// Every stored property is read and written only on `queue`, which is what
 /// makes the unchecked conformance sound: `run()` hands off to the queue before
@@ -87,7 +88,7 @@ public final class Daemon: @unchecked Sendable {
                     statuses.append(try engine.status())
                 }
             } catch {
-                failure = failure ?? (error as? SpaceSwitchSpeedError)?.description ?? "\(error)"
+                failure = failure ?? error.localizedDescription
             }
         }
         publish(statuses, error: failure)
@@ -252,14 +253,22 @@ public final class Daemon: @unchecked Sendable {
     /// app to the Trash really is enough to be rid of Space Switch Speed.
     private func removeSelf() -> Never {
         log.notice("App is gone; reverting Dock and removing the helper")
-        Engine.revertAll()
+        revertAll()
         try? HelperInstall.uninstall()
         exit(0)
     }
 
     private func stop() -> Never {
         log.notice("Stopping; reverting Dock")
-        Engine.revertAll()
+        revertAll()
         exit(0)
+    }
+
+    private func revertAll() {
+        for failure in Engine.revertAll() {
+            log.error(
+                "Dock \(failure.pid) could not be put back: \(failure.error.localizedDescription, privacy: .public)"
+            )
+        }
     }
 }

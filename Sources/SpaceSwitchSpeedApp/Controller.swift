@@ -112,7 +112,7 @@ final class Controller: ObservableObject {
 
     // MARK: - Authorisation
 
-    private enum Outcome { case succeeded, cancelled, failed }
+    private enum Outcome { case succeeded, cancelled, failed(String) }
 
     /// macOS shows its own authorisation prompt, so the app never asks for a
     /// password itself.
@@ -123,8 +123,8 @@ final class Controller: ObservableObject {
         switch Self.run(Self.helper, arguments) {
         case .succeeded: return true
         case .cancelled: return false
-        case .failed:
-            note = .failed("Could not apply your setting.")
+        case .failed(let message):
+            note = .failed(message)
             return false
         }
     }
@@ -137,7 +137,7 @@ final class Controller: ObservableObject {
         let source =
             "do shell script (quoted form of \(literal(tool.path)))"
             + " & \(literal(" " + arguments)) with administrator privileges"
-        guard let script = NSAppleScript(source: source) else { return .failed }
+        guard let script = NSAppleScript(source: source) else { return .failed("Could not run the helper.") }
 
         var error: NSDictionary?
         _ = script.executeAndReturnError(&error)
@@ -145,7 +145,12 @@ final class Controller: ObservableObject {
 
         /// `errAEUserCanceled`, which Swift does not surface from Carbon.
         let userCancelled = -128
-        return error[NSAppleScript.errorNumber] as? Int == userCancelled ? .cancelled : .failed
+        if error[NSAppleScript.errorNumber] as? Int == userCancelled { return .cancelled }
+        // The helper's own words, minus the name it prefixes them with for a terminal.
+        let message = (error[NSAppleScript.errorMessage] as? String ?? "")
+            .replacingOccurrences(of: "spaceswitchspeed: ", with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return .failed(message.isEmpty ? "Could not apply your setting." : message)
     }
 
     /// Wraps a string as an AppleScript literal; `quoted form of` then handles

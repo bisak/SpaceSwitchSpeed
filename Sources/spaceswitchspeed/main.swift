@@ -10,7 +10,8 @@ import Darwin
 import Foundation
 import SpaceSwitchSpeedKit
 
-let usage = "usage: spaceswitchspeed install <speed> | set <speed> | uninstall | daemon [--owner <app>]"
+let usage =
+    "usage: spaceswitchspeed install <speed> | set <speed> | uninstall | daemon [--owner <app>] | --help"
 
 func fail(_ message: String) -> Never {
     FileHandle.standardError.write(Data("spaceswitchspeed: \(message)\n".utf8))
@@ -25,7 +26,11 @@ guard let command = arguments.first else {
 
 do {
     switch command {
+    case "--help", "-h":
+        print(usage)
+
     case "daemon":
+        guard geteuid() == 0 else { throw SpaceSwitchSpeedError.needsRoot }
         let rest = arguments.dropFirst()
         guard rest.isEmpty || (rest.count == 2 && rest.first == "--owner") else { fail(usage) }
         Daemon(owner: rest.last).run()
@@ -43,14 +48,18 @@ do {
 
     case "uninstall":
         guard arguments.count == 1 else { fail(usage) }
-        Engine.revertAll()
+        let failures = Engine.revertAll()
         try HelperInstall.uninstall()
+        guard failures.isEmpty else {
+            let lines = failures.map {
+                "Dock \($0.pid) could not be put back: \($0.error.localizedDescription)"
+            }
+            fail((lines + ["Run `killall Dock` to finish."]).joined(separator: "\n"))
+        }
 
     default:
         fail(usage)
     }
-} catch let error as SpaceSwitchSpeedError {
-    fail(error.description)
 } catch {
-    fail("\(error)")
+    fail(error.localizedDescription)
 }

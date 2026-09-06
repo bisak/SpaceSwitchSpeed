@@ -19,34 +19,32 @@ public final class OwningApp {
     private var descriptor: Int32 = -1
 
     /// `recorded` is where the app was when the helper was installed. The
-    /// fallbacks cover an app that was run from a disk image and installed
-    /// properly afterwards, and the bundle name this app shipped under before
-    /// it took a space-separated one.
-    public init(
-        recorded: String,
-        fallbacks: [String] = [
-            "/Applications/Space Switch Speed.app", "/Applications/SpaceSwitchSpeed.app",
-        ]
-    ) {
+    /// fallback covers an app that was run from a disk image and installed
+    /// properly afterwards.
+    public init(recorded: String, fallbacks: [String] = ["/Applications/Space Switch Speed.app"]) {
         candidates = [recorded] + fallbacks.filter { $0 != recorded }
         _ = locate()
     }
 
     deinit { release() }
 
-    /// The bundle's current path, or nil while it is in the Trash or gone.
+    /// The bundle's current path, or nil while every candidate is in the Trash
+    /// or gone. A trashed bundle is let go of, so that a copy installed elsewhere
+    /// can take its place.
     public func locate() -> String? {
         if descriptor >= 0 {
-            if let path = Self.currentPath(of: descriptor), Self.isSameObject(descriptor, path) {
-                return Self.isInTrash(path) ? nil : path
+            if let path = Self.currentPath(of: descriptor), Self.isSameObject(descriptor, path),
+                !Self.isInTrash(path)
+            {
+                return path
             }
             release()
         }
-        for path in candidates {
+        for path in candidates where !Self.isInTrash(path) {
             let opened = open(path, O_EVTONLY)
             guard opened >= 0 else { continue }
             descriptor = opened
-            return Self.isInTrash(path) ? nil : path
+            return path
         }
         return nil
     }

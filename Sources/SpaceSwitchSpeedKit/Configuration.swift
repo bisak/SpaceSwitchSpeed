@@ -24,9 +24,12 @@ public struct Configuration: Codable, Equatable, Sendable {
         fileURLWithPath: "/Library/Application Support/SpaceSwitchSpeed", isDirectory: true)
     public static let url = directory.appendingPathComponent("config.json")
 
-    public static func load() -> Configuration {
+    /// Anything that cannot be trusted — unreadable, malformed, or a speed the
+    /// CLI would have refused — reads as stock, so Dock is left alone.
+    public static func load(from url: URL = Configuration.url) -> Configuration {
         guard let data = try? Data(contentsOf: url),
-            let config = try? JSONDecoder().decode(Configuration.self, from: data)
+            let config = try? JSONDecoder().decode(Configuration.self, from: data),
+            Speed.range.contains(config.speed)
         else {
             return Configuration(speed: Speed.stock)
         }
