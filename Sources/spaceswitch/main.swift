@@ -14,15 +14,14 @@ let usage = """
       spaceswitch status | revert | presets | install | uninstall
 
     ARGUMENTS
-      <speed>              0.2 – 1.0, a multiplier on your display's stock pace.
-                           1.0 is exactly what macOS ships; lower is faster.
+      <speed>              0.2 – 1.0, a multiplier on the stock pace. 1.0 is
+                           exactly what macOS ships; lower is faster.
                            Accepts a preset name as well: \(Speed.presets.map { $0.name.lowercased() }.joined(separator: ", "))
 
     OPTIONS
       --damping <ratio>    Override the damping ratio. Below 1.0 overshoots and
-                           bounces; 1.0 is critical; above 1.0 eases in. Default
-                           follows your display's stock value, easing toward
-                           critical as speed increases.
+                           bounces; 1.0 is critical; above 1.0 eases in.
+                           Defaults to the ratio Apple's own constants imply.
       --refresh <hz>       Report predicted times for this refresh rate.
       --dry-run            Print what would change without touching Dock.
       --keep               With `uninstall`, leave the running Dock as it is.
@@ -30,8 +29,8 @@ let usage = """
       --help               This text.
 
     COMMANDS
-      status               Show what Dock is currently running.
-      config               Show the saved settings and what the helper reports.
+      status               Show the saved settings and what the helper reports,
+                           and with sudo, what Dock is actually running.
       revert               Restore Apple's constants. `killall Dock` also works.
       presets              List the presets and their predicted timings.
       install              Install the helper so the setting survives restarts.
