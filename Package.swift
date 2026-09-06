@@ -2,20 +2,16 @@
 import PackageDescription
 
 let package = Package(
-    name: "SpaceSwitch",
-    platforms: [.macOS(.v13)],
+    name: "SpaceSwitchSpeed",
+    platforms: [.macOS(.v15)],
     products: [
-        .library(name: "SpaceSwitchKit", targets: ["SpaceSwitchKit"]),
-        .executable(name: "spaceswitch", targets: ["spaceswitch"]),
+        .library(name: "SpaceSwitchSpeedKit", targets: ["SpaceSwitchSpeedKit"]),
+        .executable(name: "spaceswitchspeed", targets: ["spaceswitchspeed"]),
     ],
     targets: [
-        .target(name: "SpaceSwitchKit", swiftSettings: .strict),
-        .executableTarget(name: "spaceswitch", dependencies: ["SpaceSwitchKit"], swiftSettings: .strict),
-        .testTarget(name: "SpaceSwitchKitTests", dependencies: ["SpaceSwitchKit"], swiftSettings: .strict),
+        .target(name: "SpaceSwitchSpeedKit"),
+        .executableTarget(name: "spaceswitchspeed", dependencies: ["SpaceSwitchSpeedKit"]),
+        .executableTarget(name: "dock-check", dependencies: ["SpaceSwitchSpeedKit"]),
+        .testTarget(name: "SpaceSwitchSpeedKitTests", dependencies: ["SpaceSwitchSpeedKit"]),
     ]
 )
-
-extension [SwiftSetting] {
-    /// Swift 6 language mode: data-race safety is checked at compile time.
-    static var strict: [SwiftSetting] { [.swiftLanguageMode(.v6)] }
-}

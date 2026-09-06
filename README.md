@@ -1,215 +1,118 @@
-# SpaceSwitch
+<p align="center">
+  <img src="docs/images/banner.webp" alt="SpaceSwitchSpeed — make the macOS Space switch as fast as you want" width="100%">
+</p>
+
+# SpaceSwitchSpeed
 
 **Make the macOS Space-switching animation as fast as you want.**
 
-The slide between desktops — the one you get from a three-finger swipe, `Control + →`,
-or Mission Control — takes about a third of a second on macOS, and there is no setting
-anywhere to change it. SpaceSwitch adds the slider Apple never shipped.
+The slide between desktops, the one you get from a three-finger swipe, `Control + →`
+or Mission Control, takes about a third of a second, and macOS has no setting to
+change it. The `defaults write` commands you will find online
+[stopped working years ago](#why-defaults-write-doesnt-fix-this). SpaceSwitchSpeed
+adds the slider Apple never shipped.
 
-[![Platform](https://img.shields.io/badge/platform-macOS%2013%2B-lightgrey)](#compatibility)
+[![Platform](https://img.shields.io/badge/platform-macOS%2015%2B-lightgrey)](#compatibility)
 [![Apple Silicon](https://img.shields.io/badge/arch-Apple%20Silicon-black)](#compatibility)
 [![License](https://img.shields.io/badge/license-AGPL--3.0-blue)](LICENSE)
 
-```
-$ sudo spaceswitch 0.35
-SpaceSwitch is active on Dock (pid 9226).
-
-  speed        0.35 of stock
-  arrives in   108 ms (stock 317 ms)
-  settles in   350 ms
-  gain 11.969785  retention 0.353613
-```
-
----
-
-## Why `defaults write` doesn't fix this
-
-Search for *"macOS space switch animation slow"* and every result tells you to run one
-of these:
-
-```bash
-defaults write com.apple.dock workspaces-swoosh-animation-off -bool true   # dead
-defaults write com.apple.dock expose-animation-duration -float 0.1         # dead
-```
-
-Neither does anything on any current macOS. Not "it stopped working" — those preference
-keys **no longer exist as strings inside the Dock binary at all**:
-
-```bash
-$ strings -a /System/Library/CoreServices/Dock.app/Contents/MacOS/Dock \
-    | grep -cE 'workspaces-swoosh-animation-off|expose-animation-duration'
-0
-```
-
-`workspaces-swoosh-animation-off` was real in Mac OS X Lion and removed over a decade
-ago. `expose-animation-duration` only ever affected Mission Control's zoom, never the
-Space slide. Both answers have been copied forward ever since.
-
-The other common advice — **System Settings → Accessibility → Display → Reduce Motion** —
-does work, but it is a blunt instrument: it replaces the slide with a cross-fade and
-also flattens window minimising, Launchpad, Mission Control, notification transitions
-and app switching across the whole system. If you only want the Space switch to be
-quicker, it costs far too much.
-
-**There is no preference for this because there is no duration to set.** See
-[what it actually does](#what-it-actually-does).
-
-## What it actually does
-
-Dock does not play a timed animation for a Space switch. It runs a spring — a leaky
-integrator — on a queue literally named `space-switcher-<uuid>`, stepped once per
-display frame:
-
-```
-velocity = gain × (target − position) + retention × velocity
-position = position + Δt × velocity
-```
-
-It stops when the spring settles (`|velocity| < 0.01`), not when a clock runs out.
-Apple ships `gain = 2.0` and `retention = 0.695` as constants in `__TEXT,__const`.
-That is the whole animation, and it is why no duration preference exists to expose.
-
-SpaceSwitch rewrites five instructions in the running Dock process so those two
-constants come from a page it controls, then solves for the pair that produces the
-speed you asked for. Nothing is written to disk, nothing is patched on disk, and the
-change disappears the moment Dock restarts.
-
-There is a detailed write-up in [docs/REVERSE-ENGINEERING.md](docs/REVERSE-ENGINEERING.md).
-
-### One slider
-
-The slider scales the spring's time constant. `1.00` writes back Apple's own
-constants exactly, and `0.50` really is half — the presets come out at 1.00, 0.76,
-0.50, 0.34 and 0.21 of stock.
-
-It needs no per-machine calibration, which is worth saying because it looks like it
-should. `Δt` is your display's frame interval, so Apple's fixed constants do describe
-a slightly different spring on every refresh rate — damping ratio 0.91 on a 60 Hz Mac
-against 1.29 on 120 Hz ProMotion. But the velocity step carries no timestep:
-
-```
-velocity = gain × (target − position) + retention × velocity
-```
-
-so the coefficients fix the dynamics *per frame*, and `position += Δt × velocity`
-compensates for the rest. Solving for 60, 120 or 144 Hz moves the gain by half a
-percent and the retention not at all, and the resulting animation takes the same
-wall-clock time either way. Mixed-refresh multi-monitor setups need no special
-handling for the same reason.
-
-| Preset | Speed | 120 Hz arrival | 60 Hz arrival | Overshoot |
-|---|---|---|---|---|
-| Default | 1.00 | 317 ms | 283 ms | none |
-| Gentle | 0.75 | 242 ms | 217 ms | none |
-| Balanced | 0.50 | 158 ms | 150 ms | none |
-| Quick | 0.35 | 108 ms | 100 ms | none |
-| Instant | 0.20 | 67 ms | 67 ms | none |
-
 ## Requirements
 
-- Apple Silicon Mac (arm64e), macOS 13 Ventura or later
-- **System Integrity Protection disabled** — see [below](#disabling-system-integrity-protection)
-- Administrator access
+- An Apple Silicon Mac running macOS 15 Sequoia or later
+- **System Integrity Protection disabled.** That is a real tradeoff, so read
+  [what it means](#disabling-system-integrity-protection) before installing
+- An administrator account
 
 ## Install
 
-### Homebrew
+### App
+
+Download `SpaceSwitchSpeed-<version>.dmg` from the
+[Releases](https://github.com/bisak/spaceswitchspeed/releases) page, open it, and drag
+SpaceSwitchSpeed into the Applications folder beside it. Then clear the download
+quarantine:
 
 ```bash
-brew tap bisak/spaceswitch https://github.com/bisak/spaceswitch
-brew install spaceswitch          # command line tool
-brew install --cask spaceswitch   # app
+xattr -dr com.apple.quarantine /Applications/SpaceSwitchSpeed.app
 ```
+
+The app is signed for local use but not notarised by Apple, which needs a paid
+Developer ID, so without that step macOS refuses to open it. If you would rather not
+run a command, launch the app once, let it be blocked, then click **Open Anyway** in
+**System Settings → Privacy & Security**. Control-clicking the app and choosing Open
+does not work: Apple removed that bypass in macOS 15.
 
 ### From source
 
 ```bash
-git clone https://github.com/bisak/spaceswitch
-cd spaceswitch
+git clone https://github.com/bisak/spaceswitchspeed
+cd spaceswitchspeed
 make              # list every target
 make run          # build the app and launch it
-make install      # install the command line tool and helper
+make install      # build the app and put it in /Applications
 ```
 
-Needs Xcode 26 or newer. macOS draws an app with the controls of the SDK it was
-linked against, so building with an older Xcode than your system produces a
-window that looks a release behind.
-
-The app is an Xcode target; `SpaceSwitchKit`, the command line tool and the
-tests are a Swift package the project depends on. That split is deliberate —
-Homebrew builds the tool with `swift build` and never needs Xcode.
+Needs Xcode 26 or newer, because macOS draws a window with the controls of the SDK it
+was linked against, and an older Xcode produces one that looks a release behind.
 
 ## Usage
-
-### App
 
 One slider. Drag it, and the change takes effect.
 
 The first change asks for your password once, because writing to Dock needs root.
 Everything after that is silent, including putting the setting back whenever Dock
-restarts. Sliding all the way back to Default turns SpaceSwitch off entirely, and
-**SpaceSwitch → Remove SpaceSwitch…** takes it off the machine.
+restarts. After an update, the next change asks once more so the new version can
+replace its helper. Sliding all the way back to Default turns SpaceSwitchSpeed off
+entirely, and **SpaceSwitchSpeed → Remove SpaceSwitchSpeed…** takes it off the machine.
 
-There is nothing else to configure. Damping stays at whatever Apple's own constants
-imply, because every value that differs enough to notice overshoots, and a desktop
-that slides past and springs back reads as a glitch rather than a flourish.
+The setting is shared by every account on the Mac and applies to every logged-in
+user's Dock, fast user switching included. From a standard account, each change asks
+for an administrator's name and password.
 
-### Command line
+That password installs a small background helper. macOS lists it under
+**System Settings → General → Login Items & Extensions**; switch it off there and Dock
+goes back to normal at once. This is everything it places on your Mac, and
+**Remove SpaceSwitchSpeed…** deletes all of it:
 
-```bash
-sudo spaceswitch 0.5        # set speed, 0.2 (fastest) to 1.0 (stock)
-sudo spaceswitch balanced   # presets by name
-spaceswitch presets         # the presets and how long each takes
-spaceswitch status          # the saved setting; with sudo, what Dock is running
-sudo spaceswitch revert     # back to Apple's constants
-
-sudo spaceswitch install    # install the helper, so the setting survives restarts
-sudo spaceswitch uninstall  # remove it and everything it wrote, and revert
-```
+- `/Library/LaunchDaemons/com.bisak.spaceswitchspeed.helper.plist`
+- `/Library/PrivilegedHelperTools/com.bisak.spaceswitchspeed.helper`
+- `/Library/Application Support/SpaceSwitchSpeed/`, which holds your setting
 
 ## Disabling System Integrity Protection
 
 **This is a real security tradeoff. Read this section rather than skipping it.**
 
-### Why it's needed
+SpaceSwitchSpeed works by writing to the memory of Dock, a running Apple process, and
+macOS forbids that for every process, root included, while System Integrity Protection
+is on. There is no entitlement, permission dialog or App Store-friendly way around it.
+Apple reserves that capability for its own tools.
 
-SIP stops any process — including root — from reading or writing another process's
-memory when that process is an Apple platform binary. Dock is one. Without SIP off,
-`task_for_pid` on Dock returns `KERN_FAILURE` and SpaceSwitch cannot do anything at
-all. There is no entitlement, no permission dialog and no App Store-friendly path
-around this; Apple deliberately reserves that capability for its own signed tools.
+Apple's page [About System Integrity Protection on your Mac](https://support.apple.com/en-us/102149)
+explains exactly what it protects. In short, SIP stops root from modifying the system
+volume, loading unsigned kernel extensions and attaching to Apple's processes, and that
+last one is what SpaceSwitchSpeed needs. Gatekeeper, notarisation, sandboxing, TCC and
+FileVault all keep working with SIP off. What you give up is a defence-in-depth layer
+for the case where something has already got root on your machine.
 
-### What you actually give up
+Whether that trade is acceptable is your call. A shared Mac, a work laptop under an MDM
+policy, or anything holding credentials you cannot rotate: leave SIP on and don't use
+this tool. A personal development Mac where you already run unsigned binaries: the
+marginal risk is small, and tools such as yabai's scripting addition need exactly the
+same thing.
 
-Turning SIP off is not a single switch — it disables a bundle of protections:
-
-- Processes can be attached to and modified by root (this is the one we need)
-- `/System`, `/usr`, `/bin`, `/sbin` become writable by root
-- Unsigned kernel extensions can load
-- `dtrace` restrictions on system processes are lifted
-- NVRAM protection is lifted
-
-In practice, for a single-user development Mac, the meaningful change is that
-**malware running as root gains capabilities it would not otherwise have**. SIP is a
-defence-in-depth layer for the case where something already got root on your machine.
-It is not what stops you being compromised in the first place — Gatekeeper,
-notarisation, sandboxing, TCC and FileVault all keep working with SIP off.
-
-Whether that trade is acceptable is genuinely your call, and it depends on what the
-machine does. A shared machine, a work laptop under an MDM policy, or anything holding
-credentials you cannot rotate: leave SIP on and don't use this tool. A personal
-development Mac where you already run Homebrew, Xcode and unsigned binaries: the
-marginal risk is small, and plenty of well-known developer tools (yabai's scripting
-addition, older Karabiner versions, various debuggers) require exactly the same thing.
-
-**SpaceSwitch will never disable SIP for you.** It detects the state, explains it, and
+**SpaceSwitchSpeed will never disable SIP for you.** It detects the state, says so, and
 stops. Turning it off is a deliberate act performed from Recovery, by you.
 
 ### How to disable it
 
+Apple documents the procedure in
+[Disabling and Enabling System Integrity Protection](https://developer.apple.com/documentation/security/disabling-and-enabling-system-integrity-protection).
+On an Apple Silicon Mac:
+
 1. Shut the Mac down completely.
 2. Press and **hold** the power button until "Loading startup options" appears.
-3. Click **Options → Continue** to enter Recovery.
+3. Click **Options → Continue** to enter
+   [macOS Recovery](https://support.apple.com/en-us/102518).
 4. Choose **Utilities → Terminal** from the menu bar.
 5. Run:
 
@@ -217,34 +120,74 @@ stops. Turning it off is a deliberate act performed from Recovery, by you.
    csrutil disable
    ```
 
-6. Confirm, then reboot normally.
+6. Confirm, then restart normally.
 
 Verify with `csrutil status`, which should report `disabled`.
 
-> On a Mac with FileVault enabled you will be asked to unlock the disk first. That is
-> expected. FileVault stays on and keeps working.
+> With FileVault on, Recovery asks you to unlock the disk first. That is expected, and
+> FileVault stays on.
 
 ### How to re-enable it
 
-Exactly the same steps, with `csrutil enable`. It is completely reversible, and nothing
-SpaceSwitch does needs undoing first — the patch only ever existed in memory.
+The same steps with `csrutil enable`. It is completely reversible, and nothing
+SpaceSwitchSpeed does needs undoing first: the patch only ever existed in memory.
 
-## What SpaceSwitch does not do
+## How it works
+
+Dock does not play a timed animation when you switch Space. It runs a spring: every
+frame it moves the desktop a little closer to where it is going, and the animation ends
+when the spring has settled, not when a clock runs out. Two constants in Dock's code set
+how stiff that spring is, and they are what make the switch take a third of a second.
+
+SpaceSwitchSpeed changes those two constants in the running Dock process. It rewrites
+five instructions so that the constants are read from a page it controls, then solves
+for the pair that produces the speed you asked for. Nothing is written to disk, and the
+change disappears the moment Dock restarts, which is why a small helper puts it back.
+
+The slider scales how long the spring takes. `1.00` writes back Apple's own constants
+exactly, and `0.50` really is half. Refresh rate makes no difference to that, so there
+is nothing to calibrate. There is no second control for damping, because every value
+that differs enough from Apple's to notice overshoots, and a desktop that slides past
+and springs back reads as a glitch rather than a flourish.
+
+The disassembly, the constants, the patch and why it is safe are written up in
+[docs/REVERSE-ENGINEERING.md](docs/REVERSE-ENGINEERING.md).
+
+### Why `defaults write` doesn't fix this
+
+Search for *"macOS space switch animation slow"* and every result tells you to run one
+of these:
+
+```bash
+defaults write com.apple.dock workspaces-swoosh-animation-off -bool true
+defaults write com.apple.dock expose-animation-duration -float 0.1
+```
+
+Neither does anything on any current macOS. `workspaces-swoosh-animation-off` was real
+in Mac OS X Lion and was removed over a decade ago. `expose-animation-duration` only
+ever affected Mission Control's zoom, never the Space slide. Neither string exists in
+the Dock binary any more; both answers have simply been copied forward. There is no
+preference to set because there is no duration: the animation is a spring, as above.
+
+**Reduce Motion** (System Settings → Accessibility → Display) does work, but it
+replaces the slide with a cross-fade and also flattens window minimising, Launchpad,
+Mission Control, notification transitions and app switching across the whole system.
+If you only want the Space switch to be quicker, it costs far too much.
+
+## What SpaceSwitchSpeed does not do
 
 Worth being explicit, because "patches Dock" sounds alarming:
 
 - **It does not modify any file on disk.** Not Dock, not the system volume, nothing.
   The Dock binary is byte-identical before and after.
 - **It does not persist in Dock.** The change lives in one process's memory. `killall Dock`
-  removes it completely and unconditionally — that is the escape hatch if anything ever
-  looks wrong.
-- **It does not disable SIP, ask you to run a curl-to-bash installer, or phone home.**
-- **It refuses to write to anything it has not identified.** The five instructions are
-  located by matching the *shape* of the code — a specific eight-instruction integrator
-  and its preamble — not by hardcoded addresses. It verifies Apple's exact constants are
-  present before touching anything, checks that the register it borrows is not used
-  elsewhere, and aborts if any of that fails. On a macOS build it doesn't recognise it
-  does nothing and says so.
+  removes it completely and unconditionally, and that is the escape hatch if anything
+  ever looks wrong.
+- **It does not disable SIP, run a curl-to-bash installer, or phone home.**
+- **It does not write to anything it has not identified.** The instructions it changes
+  are found by matching the shape of the code, not by hardcoded addresses, and it checks
+  that Apple's exact constants are present before touching anything. On a macOS build it
+  doesn't recognise, it does nothing and says so.
 - **It changes one animation.** Mission Control, Launchpad, window minimising and app
   switching are untouched.
 
@@ -253,17 +196,89 @@ Worth being explicit, because "patches Dock" sounds alarming:
 | | |
 |---|---|
 | Architecture | Apple Silicon (arm64e) only. Intel Macs are not supported. |
-| macOS | Built and verified on macOS 26. Should work on 13+ wherever the integrator shape matches; it refuses safely when it doesn't. |
+| macOS | Verified against the Dock of every release listed [below](#which-versions-are-verified). macOS 15 Sequoia is the floor: 13 and 14 drive the animation from a fixed 60 Hz timestep rather than the display's, and SpaceSwitchSpeed refuses to patch them. |
 | Displays | Nothing to configure. The coefficients are per-frame, so refresh rate and multi-monitor setups make no practical difference. |
+| SIP | Off, or a custom configuration with debugging restrictions off (`csrutil enable --without debug`). Nothing else in SIP matters to it. |
+
+### Which versions are verified
+
+Each of these was checked by running the locator against the Dock binary from Apple's
+restore image for that build, without patching anything. `make check-dock` does the same
+for the Dock on your own Mac, and `make fetch-dock MACOS=15.0` gets any other release's:
+
+| macOS | Dock | |
+|---|---|---|
+| 13.0 (22A380) | 2206 | refuses — fixed 60 Hz timestep |
+| 14.0 (23A344) | 2273.1.100 | refuses — fixed 60 Hz timestep |
+| 14.6.1 (23G93) | 2273.105 | refuses — fixed 60 Hz timestep |
+| 15.0 (24A335) | 2341.0.1 | works |
+| 15.6.1 (24G90) | 2341.6.1 | works |
+| 26.0 (25A354) | 2427.0.4 | works |
+| 26.2 (25C56) | 2427.2.4 | works |
+| 26.4 (25E246) | 2427.4.7 | works |
+| 26.6.2 (25G83) | 2427.6 | works |
 
 ## Uninstall
 
-```bash
-sudo spaceswitch uninstall     # reverts Dock, removes the helper
-brew uninstall spaceswitch
-```
+**SpaceSwitchSpeed → Remove SpaceSwitchSpeed…** puts Dock back, removes the helper and
+everything it wrote, and quits, leaving only the app for you to move to the Trash.
 
-Or just `killall Dock` and delete the app. Nothing is left behind on the system volume.
+Or just delete the app. The helper notices within a few minutes, puts Dock back and
+removes itself, leaving nothing on the system volume. Moving or renaming the app is
+fine; only the Trash counts. `killall Dock` undoes the patch immediately, at any time.
+
+## FAQ
+
+**Does this work on Intel Macs?**
+No. The patch is arm64e machine code. Intel support would need a separate implementation.
+
+**Will a macOS update break it?**
+It may, and the honest answer is that recompiling Dock is enough to do it. The animation
+is located by the data flow of its integrator, not by address and not by one fixed
+sequence of instructions, because measuring real builds showed the compiler reorders
+that sequence freely: between macOS 26.2 and 26.4 the operands of one commutative
+multiply swapped, which was enough to defeat an earlier, stricter signature. Matching the
+data flow instead absorbs that, and every release in the table above is checked.
+
+A genuine rewrite still defeats it, and one has already happened once — macOS 15 moved
+the animation from a fixed 60 Hz timestep to the display's real frame interval, which is
+why 13 and 14 are not supported. Either way it fails safely: it refuses to patch rather
+than writing to an address it has not positively identified, and `killall Dock` undoes
+anything it has done.
+
+**Is this the same as yabai / Amethyst / Rectangle?**
+No. Those are window managers. SpaceSwitchSpeed changes one animation and nothing else. It
+does not require yabai's scripting addition, though both need SIP disabled for related
+reasons.
+
+**Can I make it truly instant, with no animation at all?**
+`0.20` arrives in under 70 ms, which reads as instant in practice. Going lower makes the
+spring stiff enough to look like a hard cut, and on a trackpad swipe that fights the
+gesture tracking. If you want no animation whatsoever, Reduce Motion is the honest
+answer.
+
+**Do I need to keep the app running?**
+No. The app is just the settings window. The helper is a small background process that
+only wakes when a Dock starts or stops, a user logs in or out, or the setting changes.
+
+**Does it slow down my Mac or drain battery?**
+No. It changes two floating-point constants Dock already reads every frame. There is no
+polling, no injected code path and no additional work per frame.
+
+**Why does it need root as well as SIP disabled?**
+SIP disabled makes `task_for_pid` on a platform binary *possible*; root makes it
+*permitted*. Both checks are separate and both must pass.
+
+## Contributing
+
+Issues and pull requests are welcome, particularly reports from macOS versions or
+hardware I cannot test on. If SpaceSwitchSpeed refuses to find the integrator on your
+machine, please open an issue with your macOS version, build number and Mac model,
+and what the helper said about it:
+
+```bash
+log show --last 1h --predicate 'subsystem == "com.bisak.spaceswitchspeed"'
+```
 
 ## Disclaimer
 
@@ -291,12 +306,6 @@ your responsibility.
 **You run this entirely at your own risk.** If any of the above is unacceptable to you,
 do not use this software.
 
-## Contributing
-
-Issues and pull requests are welcome — particularly reports from macOS versions or
-hardware I cannot test on. If SpaceSwitch refuses to find the integrator on your
-machine, please open an issue with your macOS version, build number and Mac model.
-
 ## License
 
 [GNU Affero General Public License v3.0 or later](LICENSE).
@@ -304,36 +313,3 @@ machine, please open an issue with your macOS version, build number and Mac mode
 You may use, study, modify and redistribute this software. If you distribute it, or run
 a modified version as a network service, you must make your source available under the
 same licence.
-
-## FAQ
-
-**Does this work on Intel Macs?**
-No. The patch is arm64e machine code. Intel support would need a separate implementation.
-
-**Will a macOS update break it?**
-It may. SpaceSwitch locates the code by shape rather than by address, so it survives
-most recompilations, but a genuine rewrite of the animation would defeat it. It fails
-safely: it refuses to patch rather than writing to a wrong address.
-
-**Is this the same as yabai / Amethyst / Rectangle?**
-No. Those are window managers. SpaceSwitch changes one animation and nothing else. It
-does not require yabai's scripting addition, though both need SIP disabled for related
-reasons.
-
-**Can I make it truly instant, with no animation at all?**
-`0.20` gets to about 75 ms, which reads as instant in practice. Going lower makes the
-spring stiff enough to look like a hard cut, and on a trackpad swipe that fights the
-gesture tracking. If you want no animation whatsoever, Reduce Motion is the honest
-answer.
-
-**Do I need to keep the app running?**
-No. The app is just the settings window. The helper is a small background process that
-only wakes when Dock restarts.
-
-**Does it slow down my Mac or drain battery?**
-No. It changes two floating-point constants Dock already reads every frame. There is no
-polling, no injected code path and no additional work per frame.
-
-**Why does it need root as well as SIP disabled?**
-SIP disabled makes `task_for_pid` on a platform binary *possible*; root makes it
-*permitted*. Both checks are separate and both must pass.

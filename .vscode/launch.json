@@ -1,0 +1,44 @@
+{
+    "configurations": [
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:macos-spaceswitchspeed}",
+            "name": "Debug spaceswitchspeed",
+            "target": "spaceswitchspeed",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug spaceswitchspeed"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:macos-spaceswitchspeed}",
+            "name": "Release spaceswitchspeed",
+            "target": "spaceswitchspeed",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release spaceswitchspeed"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:macos-spaceswitchspeed}",
+            "name": "Debug dock-check",
+            "target": "dock-check",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug dock-check"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:macos-spaceswitchspeed}",
+            "name": "Release dock-check",
+            "target": "dock-check",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release dock-check"
+        }
+    ]
+}

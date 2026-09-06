@@ -68,7 +68,7 @@ func render(_ size: CGFloat) -> Data {
     return bitmap.representation(using: .png, properties: [:])!
 }
 
-let appIcon = URL(fileURLWithPath: "Sources/SpaceSwitchApp/Assets.xcassets/AppIcon.appiconset")
+let appIcon = URL(fileURLWithPath: "Sources/SpaceSwitchSpeedApp/Assets.xcassets/AppIcon.appiconset")
 try FileManager.default.createDirectory(at: appIcon, withIntermediateDirectories: true)
 
 let sizes = [(16, 1), (16, 2), (32, 1), (32, 2), (128, 1), (128, 2), (256, 1), (256, 2), (512, 1), (512, 2)]
