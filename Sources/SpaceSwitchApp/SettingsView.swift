@@ -7,7 +7,6 @@ import SwiftUI
 
 struct SettingsView: View {
     @ObservedObject var controller: Controller
-    @State private var showingOptions = false
 
     var body: some View {
         Form {
@@ -36,84 +35,13 @@ struct SettingsView: View {
                     .disabled(!controller.isEditable)
                 }
             } footer: {
-                VStack(alignment: .leading, spacing: 10) {
-                    if let note = controller.note { NoteView(note: note) }
-                    HStack {
-                        Spacer()
-                        Button("Options…") { showingOptions = true }
-                            .disabled(!controller.isEditable)
-                    }
-                }
+                if let note = controller.note { NoteView(note: note) }
             }
         }
         .formStyle(.grouped)
-        .sheet(isPresented: $showingOptions) { OptionsSheet(controller: controller) }
-    }
-}
-
-/// Damping, kept behind a button because changing it is a matter of taste and
-/// the automatic value is right for almost everyone.
-private struct OptionsSheet: View {
-    @ObservedObject var controller: Controller
-    @Environment(\.dismiss) private var dismiss
-
-    @State private var bounce: Double
-    @State private var runsAtLogin: Bool
-    @State private var confirmingRemoval = false
-
-    init(controller: Controller) {
-        self.controller = controller
-        _bounce = State(initialValue: controller.bounce)
-        _runsAtLogin = State(initialValue: controller.runsAtLogin)
-    }
-
-    var body: some View {
-        VStack(spacing: 0) {
-            Form {
-                Section {
-                    Toggle("Apply after restarting", isOn: $runsAtLogin)
-                    LabeledContent("Bounce") {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Slider(
-                                value: $bounce,
-                                in: Speed.bounceRange.lowerBound...Speed.bounceRange.upperBound)
-                            HStack {
-                                Text("None")
-                                Spacer()
-                                Text("Springy")
-                            }
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        }
-                        .frame(width: 240)
-                    }
-                }
-
-                Section {
-                    Button("Remove SpaceSwitch…", role: .destructive) { confirmingRemoval = true }
-                }
-            }
-            .formStyle(.grouped)
-
-            Divider()
-            HStack {
-                Spacer()
-                Button("Cancel") { dismiss() }
-                    .keyboardShortcut(.cancelAction)
-                Button("OK") {
-                    // Everything here commits together, so Cancel really cancels.
-                    controller.setRunsAtLogin(runsAtLogin)
-                    controller.setBounce(bounce)
-                    dismiss()
-                }
-                .keyboardShortcut(.defaultAction)
-            }
-            .padding(16)
-        }
-        .frame(width: 460)
-        .fixedSize(horizontal: false, vertical: true)
         .confirmationDialog(
-            "Remove SpaceSwitch?", isPresented: $confirmingRemoval, titleVisibility: .visible
+            "Remove SpaceSwitch?", isPresented: $controller.confirmingRemoval,
+            titleVisibility: .visible
         ) {
             Button("Remove", role: .destructive) { controller.removeEverything() }
             Button("Cancel", role: .cancel) {}

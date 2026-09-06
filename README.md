@@ -144,7 +144,13 @@ One slider. Drag it, and the change takes effect.
 
 The first change asks for your password once, because writing to Dock needs root.
 Everything after that is silent, including putting the setting back whenever Dock
-restarts. Sliding all the way back to Default turns SpaceSwitch off entirely.
+restarts. Sliding all the way back to Default turns SpaceSwitch off entirely, and
+**SpaceSwitch → Remove SpaceSwitch…** takes it off the machine.
+
+There is nothing else to configure. Damping is chosen for you from your display's
+refresh rate and the speed you picked, because every setting that overshoots looks
+like a glitch rather than a flourish — `--damping` on the command line is there if
+you want to prove that to yourself.
 
 ### Command line
 
@@ -152,7 +158,7 @@ restarts. Sliding all the way back to Default turns SpaceSwitch off entirely.
 sudo spaceswitch                 # show what Dock is running now
 sudo spaceswitch 0.5             # set speed, 0.2 (fastest) to 1.0 (stock)
 sudo spaceswitch balanced        # presets by name
-sudo spaceswitch --damping 1.15 0.5
+sudo spaceswitch --damping 1.15 0.5  # override the chosen damping
 spaceswitch presets              # predicted timings for your display
 spaceswitch 0.4 --dry-run        # compute without touching Dock
 sudo spaceswitch revert          # back to Apple's constants

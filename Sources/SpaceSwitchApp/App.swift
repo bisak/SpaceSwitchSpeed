@@ -16,7 +16,12 @@ struct SpaceSwitchApp: App {
                 .fixedSize(horizontal: false, vertical: true)
         }
         .windowResizability(.contentSize)
-        .commands { CommandGroup(replacing: .newItem) {} }
+        .commands {
+            CommandGroup(replacing: .newItem) {}
+            CommandGroup(after: .appInfo) {
+                Button("Remove SpaceSwitch…") { controller.confirmingRemoval = true }
+            }
+        }
     }
 }
 

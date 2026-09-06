@@ -19,14 +19,11 @@ final class Controller: ObservableObject {
     @Published var stop: Double
     @Published private(set) var note: Note?
     @Published private(set) var busy = false
+    @Published var confirmingRemoval = false
 
     /// Damping is a secondary control, hidden behind Options. Nil means it
     /// follows the speed automatically, which is what almost everyone wants.
     @Published private(set) var damping: Double?
-
-    /// Whether the background helper is installed. It is the only thing that
-    /// brings the setting back after Dock or the Mac restarts.
-    @Published private(set) var runsAtLogin: Bool
 
     enum Note: Equatable {
         case needsSIPDisabled
@@ -45,7 +42,6 @@ final class Controller: ObservableObject {
         stop = position
         committed = position
         damping = config.damping
-        runsAtLogin = HelperInstall.isInstalled
 
         if !SystemIntegrityProtection.isDisabled { note = .needsSIPDisabled }
 
@@ -61,34 +57,11 @@ final class Controller: ObservableObject {
 
     var isEditable: Bool { note != .needsSIPDisabled && !busy }
 
-    /// The control is expressed as overshoot, which is what the eye sees; the
-    /// damping ratio behind it is not something anyone can picture.
-    var bounce: Double {
-        guard let damping, damping < 1 else { return 0 }
-        return Foundation.exp(-Double.pi * damping / (1 - damping * damping).squareRoot())
-    }
-
     // MARK: - Changing the setting
 
     func commit() {
         guard note != .needsSIPDisabled, stop != committed else { return }
         apply(stop: stop, damping: damping)
-    }
-
-    func setBounce(_ value: Double) {
-        let chosen = SpringModel.damping(forOvershoot: value)
-        damping = chosen
-        apply(stop: stop, damping: chosen)
-    }
-
-    func setRunsAtLogin(_ enabled: Bool) {
-        guard enabled != runsAtLogin else { return }
-        Task {
-            // Removing the helper leaves Dock as it is; the setting simply
-            // stops coming back once Dock or the Mac restarts.
-            guard await authorise(enabled ? "install" : "uninstall --keep") else { return }
-            runsAtLogin = HelperInstall.isInstalled
-        }
     }
 
     /// Takes SpaceSwitch off the machine: Dock back to stock, the helper and
@@ -125,14 +98,12 @@ final class Controller: ObservableObject {
             return
         }
 
-        // Otherwise the change has to carry its own privileges. Installing the
-        // helper is the default; without it the tool applies the value once.
+        // Otherwise this first change installs the helper, which is what makes
+        // every change after it silent.
         Task {
-            let command = runsAtLogin ? "install" : String(format: "%.2f", preset.value)
-            if await authorise(command) {
+            if await authorise("install") {
                 try? config.save()
                 self.committed = stop
-                self.runsAtLogin = HelperInstall.isInstalled
                 self.note = nil
             } else {
                 self.stop = self.committed
