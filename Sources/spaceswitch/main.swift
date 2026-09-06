@@ -50,6 +50,7 @@ var command = "apply"
 var json = false
 var dryRun = false
 var keepCurrent = false
+var ownerPath: String?
 
 func fail(_ message: String) -> Never {
     FileHandle.standardError.write(Data("spaceswitch: \(message)\n".utf8))
@@ -69,6 +70,10 @@ while index < args.count {
     case "--json": json = true
     case "--dry-run": dryRun = true
     case "--keep": keepCurrent = true
+    case "--owner":
+        index += 1
+        guard index < args.count else { fail("--owner needs a path") }
+        ownerPath = args[index]
     case "--damping":
         index += 1
         guard index < args.count, let v = Double(args[index]) else { fail("--damping needs a number") }
@@ -79,11 +84,7 @@ while index < args.count {
             fail("--refresh needs a positive number")
         }
         refreshArg = v
-    case "--speed":
-        index += 1
-        guard index < args.count, let v = Double(args[index]) else { fail("--speed needs a number") }
-        speedArg = v
-    case "status", "revert", "presets", "install", "uninstall", "config", "daemon": command = arg
+    case "status", "revert", "presets", "install", "uninstall", "daemon": command = arg
     default:
         if let v = Double(arg) {
             speedArg = v
@@ -166,33 +167,28 @@ do {
         }
 
     case "daemon":
-        Daemon().run()
-
-    case "config":
-        let config = Configuration.load()
-        print("settings   \(Configuration.url.path)")
-        print("  exists   \(FileManager.default.fileExists(atPath: Configuration.url.path))")
-        print("  readable \(FileManager.default.isReadableFile(atPath: Configuration.url.path))")
-        print("  enabled  \(config.enabled)")
-        print(String(format: "  speed    %.4f", config.speed))
-        print("  damping  \(config.damping.map { String(format: "%.4f", $0) } ?? "automatic")")
-        print("  refresh  \(config.lastKnownRefreshHz.map { String(format: "%.0f Hz", $0) } ?? "unrecorded")")
-        print("")
-        print("helper     \(HelperInstall.plistURL.path)")
-        print("  installed \(HelperInstall.isInstalled)")
-        if let live = HelperStatus.load() {
-            print(
-                String(
-                    format: "  reported  speed %.4f damping %.4f on Dock %d",
-                    live.speed, live.damping, live.dockPID))
-            print("  updated   \(live.updatedAt)")
-            if let error = live.error { print("  error     \(error)") }
-        } else {
-            print("  reported  nothing yet")
-        }
+        Daemon(owner: ownerPath.map { URL(fileURLWithPath: $0) }).run()
 
     case "status":
-        emit(try Engine(refreshHz: refreshArg).status(), json: json)
+        let saved = Configuration.load()
+        print("settings   \(Configuration.url.path)")
+        print("  speed    \(String(format: "%.2f", saved.speed))\(saved.enabled ? "" : "  (off)")")
+        print("  damping  \(saved.damping.map { String(format: "%.3f", $0) } ?? "automatic")")
+        print("  restarts \(HelperInstall.isInstalled ? "reapplied automatically" : "not reapplied")")
+        if let live = HelperStatus.load() {
+            if let error = live.error {
+                print("  helper   \(error)")
+            } else {
+                print(
+                    "  helper   applied \(String(format: "%.2f", live.speed)) to Dock \(live.dockPID)")
+            }
+        }
+        print("")
+        if let engine = try? Engine(refreshHz: refreshArg) {
+            emit(try engine.status(), json: json)
+        } else {
+            print("Run with sudo to read Dock directly.")
+        }
 
     case "revert":
         let engine = try Engine(refreshHz: refreshArg)

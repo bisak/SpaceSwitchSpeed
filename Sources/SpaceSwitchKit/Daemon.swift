@@ -27,7 +27,15 @@ public final class Daemon: @unchecked Sendable {
     private var lastApplied: Configuration?
     private var dockPID: pid_t = 0
 
-    public init() {}
+    /// The app bundle that installed this helper, when there is one. Dragging
+    /// an app to the Trash notifies nobody, so a helper that outlived its app
+    /// would keep patching Dock forever with nothing left to control it.
+    private let owner: URL?
+    private var consecutiveOrphanChecks = 0
+
+    public init(owner: URL? = nil) {
+        self.owner = owner
+    }
 
     public func run() -> Never {
         try? Configuration.prepareDirectory()
@@ -127,11 +135,33 @@ public final class Daemon: @unchecked Sendable {
         timer.schedule(deadline: .now() + 60, repeating: 60, leeway: .seconds(30))
         timer.setEventHandler { [weak self] in
             guard let self else { return }
+            if self.isOrphaned() { return self.removeSelf() }
             if self.dockPID == 0 || kill(self.dockPID, 0) != 0 {
                 self.reconcile(because: "heartbeat")
             }
         }
         timer.resume()
         heartbeat = timer
+    }
+
+    // MARK: - Outliving the app
+
+    /// Requires several consecutive misses so that moving the app, or replacing
+    /// it during an update, does not look like a deletion.
+    private func isOrphaned() -> Bool {
+        guard let owner else { return false }
+        let stillThere =
+            FileManager.default.fileExists(atPath: owner.path)
+            || FileManager.default.fileExists(atPath: "/Applications/SpaceSwitch.app")
+        consecutiveOrphanChecks = stillThere ? 0 : consecutiveOrphanChecks + 1
+        return consecutiveOrphanChecks >= 3
+    }
+
+    /// Reverts Dock and takes the helper off the system, so dragging the app to
+    /// the Trash really is enough to be rid of SpaceSwitch.
+    private func removeSelf() {
+        if let engine = try? Engine() { try? engine.revert() }
+        try? HelperInstall.uninstall(purge: true)
+        exit(0)
     }
 }

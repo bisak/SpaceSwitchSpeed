@@ -69,6 +69,19 @@ public enum HelperInstall {
 
     public static var isInstalled: Bool { FileManager.default.fileExists(atPath: plistURL.path) }
 
+    /// The app bundle this tool was run from, if any. Recorded at install time
+    /// so the helper can tell when it has been orphaned — macOS offers no
+    /// notification that an app was moved to the Trash.
+    public static func owningApp(of tool: URL) -> URL? {
+        let bundle = tool.deletingLastPathComponent()  // Contents/Helpers
+            .deletingLastPathComponent()  // Contents
+            .deletingLastPathComponent()  // .app
+        guard bundle.pathExtension == "app",
+            FileManager.default.fileExists(atPath: bundle.path)
+        else { return nil }
+        return bundle
+    }
+
     public static func install() throws {
         guard geteuid() == 0 else { throw SpaceSwitchError.notPermitted(KERN_PROTECTION_FAILURE) }
         let source = URL(fileURLWithPath: ProcessInfo.processInfo.arguments[0]).resolvingSymlinksInPath()
@@ -84,9 +97,12 @@ public enum HelperInstall {
             [.posixPermissions: 0o755, .ownerAccountID: 0, .groupOwnerAccountID: 0],
             ofItemAtPath: executableURL.path)
 
+        var arguments = [executableURL.path, "daemon"]
+        if let app = owningApp(of: source) { arguments += ["--owner", app.path] }
+
         let plist: [String: Any] = [
             "Label": label,
-            "ProgramArguments": [executableURL.path, "daemon"],
+            "ProgramArguments": arguments,
             "RunAtLoad": true,
             "KeepAlive": true,
             "ProcessType": "Background",
@@ -109,8 +125,9 @@ public enum HelperInstall {
     /// without it the settings survive so the helper can be switched back on.
     public static func uninstall(purge: Bool = true) throws {
         guard geteuid() == 0 else { throw SpaceSwitchError.notPermitted(KERN_PROTECTION_FAILURE) }
-        _ = launchctl(["bootout", "system/\(label)"])
-
+        // Files first: booting out terminates the helper, and the helper is
+        // itself a caller of this when it finds it has outlived its app.
+        // `bootout` unloads by label, so it does not need the plist to remain.
         let fm = FileManager.default
         try? fm.removeItem(at: plistURL)
         if purge {
@@ -119,6 +136,7 @@ public enum HelperInstall {
             try? fm.removeItem(at: executableURL)
             try? fm.removeItem(at: HelperStatus.url)
         }
+        _ = launchctl(["bootout", "system/\(label)"])
     }
 
     @discardableResult
