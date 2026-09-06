@@ -1,4 +1,4 @@
-// SpaceSwitchSpeed — speed control for the macOS Space-switch animation.
+// Space Switch Speed — speed control for the macOS Space-switch animation.
 // Copyright (C) 2026 Biser Atanasov. Licensed under AGPL-3.0-or-later.
 // See LICENSE. This program comes with ABSOLUTELY NO WARRANTY.
 
@@ -27,7 +27,7 @@ public final class Engine {
         model = SpringModel()
     }
 
-    /// Best effort across every Dock, for the paths that take SpaceSwitchSpeed
+    /// Best effort across every Dock, for the paths that take Space Switch Speed
     /// off the machine.
     public static func revertAll() {
         for pid in DockTarget.findDocks() {

@@ -1,5 +1,5 @@
 #!/bin/bash
-# Packages a built SpaceSwitchSpeed.app as the disk image people download.
+# Packages a built Space Switch Speed.app as the disk image people download.
 # Run with: Scripts/make-dmg.sh <app> <version> <output.dmg>
 #
 # A disk image's window is a Finder icon view, and the only place its
@@ -15,7 +15,7 @@ set -euo pipefail
 app=$1
 version=$2
 output=$3
-volume="SpaceSwitchSpeed $version"
+volume="Space Switch Speed $version"
 root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 stage=$(dirname "$output")/dmg-stage
 writable=$(dirname "$output")/dmg-rw.dmg
@@ -81,7 +81,7 @@ on run argv
 			-- grid. So the positions are set last, on the window that is left.
 			close
 			open
-			set position of item "SpaceSwitchSpeed.app" of container window to {168, 224}
+			set position of item "Space Switch Speed.app" of container window to {168, 224}
 			set position of item "Applications" of container window to {472, 224}
 			-- Anyone browsing with hidden items shown sees the picture and the
 			-- volume icon sitting on top of the artwork, which is what has

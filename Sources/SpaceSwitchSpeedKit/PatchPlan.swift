@@ -1,10 +1,10 @@
-// SpaceSwitchSpeed — speed control for the macOS Space-switch animation.
+// Space Switch Speed — speed control for the macOS Space-switch animation.
 // Copyright (C) 2026 Biser Atanasov. Licensed under AGPL-3.0-or-later.
 // See LICENSE. This program comes with ABSOLUTELY NO WARRANTY.
 
 import Foundation
 
-/// The five instructions SpaceSwitchSpeed rewrites, located by shape rather than by
+/// The five instructions Space Switch Speed rewrites, located by shape rather than by
 /// address so the tool keeps working when Dock is recompiled — and refuses,
 /// rather than guessing, when the shape it depends on is gone.
 ///

@@ -1,19 +1,19 @@
-// SpaceSwitchSpeed — speed control for the macOS Space-switch animation.
+// Space Switch Speed — speed control for the macOS Space-switch animation.
 // Copyright (C) 2026 Biser Atanasov. Licensed under AGPL-3.0-or-later.
 // See LICENSE. This program comes with ABSOLUTELY NO WARRANTY.
 
 import Foundation
 import SpaceSwitchSpeedKit
 
-/// Answers "would SpaceSwitchSpeed work on this build of Dock?" without a running
-/// Dock, root, or SIP disabled, by running the shipping locator over a binary on
+/// Answers "would Space Switch Speed work on this build of Dock?" without a running
+/// Dock, root, or any SIP change, by running the shipping locator over a binary on
 /// disk. Point it at a new release's Dock before users find out the hard way.
 ///
 ///     swift run dock-check                       # the Dock on this Mac
 ///     swift run dock-check path/to/Dock          # any extracted binary
 ///
 /// Exit status is 0 when the patch would apply and cleanly revert, 1 when
-/// SpaceSwitchSpeed would refuse, 2 when the file could not be read at all.
+/// Space Switch Speed would refuse, 2 when the file could not be read at all.
 
 // MARK: - Mach-O, from a file rather than a mapped process
 
@@ -89,7 +89,7 @@ private struct DockBinary {
                 ? data.load(UInt64.self, at: entry + 8).byteSwapped
                 : UInt64(data.load(UInt32.self, at: entry + 8).byteSwapped)
         }
-        throw Failure("no arm64e slice; SpaceSwitchSpeed is Apple Silicon only")
+        throw Failure("no arm64e slice; Space Switch Speed is Apple Silicon only")
     }
 
     /// Resolves a virtual address to the bytes backing it, for reading constants.
@@ -186,8 +186,8 @@ if CommandLine.arguments.contains("-h") || CommandLine.arguments.contains("--hel
         """
         usage: dock-check [Dock binary | Dock.app]
 
-        Reports whether SpaceSwitchSpeed would patch a build of Dock, without a
-        running Dock, root, or SIP disabled. Defaults to the Dock on this Mac.
+        Reports whether Space Switch Speed would patch a build of Dock, without a
+        running Dock, root, or any SIP change. Defaults to the Dock on this Mac.
         Exits 0 when it would patch, 1 when it would refuse.
         """)
     exit(0)

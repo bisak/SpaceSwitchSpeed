@@ -1,4 +1,4 @@
-// SpaceSwitchSpeed — speed control for the macOS Space-switch animation.
+// Space Switch Speed — speed control for the macOS Space-switch animation.
 // Copyright (C) 2026 Biser Atanasov. Licensed under AGPL-3.0-or-later.
 // See LICENSE. This program comes with ABSOLUTELY NO WARRANTY.
 
@@ -187,7 +187,7 @@ public enum HelperInstall {
     }
 
     /// Removes the helper and everything it wrote, leaving nothing of
-    /// SpaceSwitchSpeed on the system volume.
+    /// Space Switch Speed on the system volume.
     public static func uninstall() throws {
         guard geteuid() == 0 else { throw SpaceSwitchSpeedError.needsRoot }
         // Files first: booting out terminates the helper, and the helper is

@@ -1,4 +1,4 @@
-// SpaceSwitchSpeed — speed control for the macOS Space-switch animation.
+// Space Switch Speed — speed control for the macOS Space-switch animation.
 // Copyright (C) 2026 Biser Atanasov. Licensed under AGPL-3.0-or-later.
 // See LICENSE. This program comes with ABSOLUTELY NO WARRANTY.
 
@@ -23,7 +23,8 @@ public enum SpaceSwitchSpeedError: Error, CustomStringConvertible {
         case .notPermitted(let kr):
             return """
                 Cannot open Dock's task port (kern error \(kr)). \
-                This needs System Integrity Protection disabled and root privileges.
+                This needs root, and SIP's debugging restrictions turned off \
+                (csrutil enable --without debug).
                 """
         case .machFailure(let op, let kr):
             return "\(op) failed: \(String(cString: mach_error_string(kr))) (\(kr))"
@@ -32,7 +33,7 @@ public enum SpaceSwitchSpeedError: Error, CustomStringConvertible {
         case .signatureNotFound:
             return """
                 The Space-switch integrator was not found in this build of Dock. \
-                SpaceSwitchSpeed refuses to write to an address it has not positively \
+                Space Switch Speed refuses to write to an address it has not positively \
                 identified. Please file an issue with your macOS version.
                 """
         case .unexpectedConstants(let detail):

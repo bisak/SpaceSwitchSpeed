@@ -1,4 +1,4 @@
-// SpaceSwitchSpeed — speed control for the macOS Space-switch animation.
+// Space Switch Speed — speed control for the macOS Space-switch animation.
 // Copyright (C) 2026 Biser Atanasov. Licensed under AGPL-3.0-or-later.
 // See LICENSE. This program comes with ABSOLUTELY NO WARRANTY.
 
@@ -17,8 +17,8 @@ import os
 /// It waits for events rather than polling: a Dock exiting, the settings
 /// changing, the console user changing. Whatever cannot be done yet is retried
 /// with a backoff that settles at every 15 seconds, and a status that has not
-/// changed is not rewritten, so a helper that cannot do its job — after SIP was
-/// turned back on, say — costs nothing to keep around.
+/// changed is not rewritten, so a helper that cannot do its job — after SIP's
+/// debugging restrictions were turned back on, say — costs nothing to keep around.
 ///
 /// Every stored property is read and written only on `queue`, which is what
 /// makes the unchecked conformance sound: `run()` hands off to the queue before
@@ -249,7 +249,7 @@ public final class Daemon: @unchecked Sendable {
     }
 
     /// Reverts every Dock and takes the helper off the system, so dragging the
-    /// app to the Trash really is enough to be rid of SpaceSwitchSpeed.
+    /// app to the Trash really is enough to be rid of Space Switch Speed.
     private func removeSelf() -> Never {
         log.notice("App is gone; reverting Dock and removing the helper")
         Engine.revertAll()

@@ -1,4 +1,4 @@
-# How the Space-switch animation works, and how SpaceSwitchSpeed changes it
+# How the Space-switch animation works, and how Space Switch Speed changes it
 
 Addresses and disassembly are from macOS 26.6.2 (build 25G83), `Dock` 1.8 (2427.6),
 arm64e, as-linked with `__TEXT` at `0x100000000`. Where builds differ, they are named.
@@ -79,7 +79,7 @@ because the opposite is the intuitive conclusion. The velocity step carries no
 timestep, so the coefficients fix the dynamics per frame and `position += dt · velocity`
 absorbs the difference. Solving the same speed setting for 60, 120 and 144 Hz gives
 gains of 6.7133, 6.7467 and 6.7522 with identical retention, and the animation takes
-the same wall-clock time on any of them. SpaceSwitchSpeed therefore does not detect the
+the same wall-clock time on any of them. Space Switch Speed therefore does not detect the
 refresh rate at all; only its predicted timings depend on the fixed reference it uses.
 
 The discrete loop's characteristic polynomial is `z² − (1 + a − dt·g)z + a`, whose roots
@@ -98,7 +98,7 @@ divide by a hardcoded 60, materialised as an immediate:
 Everything ahead of those three instructions — the error, the retention multiply, the
 doubled gain, the accumulate — is identical to macOS 15 and later. Only the timestep
 changed, from a fixed 60 Hz to whatever the display reports. That is a real change to
-what the code computes rather than to how it was compiled, and it is why SpaceSwitchSpeed
+what the code computes rather than to how it was compiled, and it is why Space Switch Speed
 supports macOS 15 and later and refuses 13 and 14 rather than patching them.
 
 ## The patch
@@ -120,7 +120,7 @@ Three details make this safe rather than lucky:
 
 **Repointing `x11` is local.** The compiler emitted five redundant `adrp x11, 0x10036f000`
 instructions in a row. The one at `0x150efc` re-establishes `x11` before its next use at
-`0x150f00`, so changing the first one affects only the two loads between them. SpaceSwitchSpeed
+`0x150f00`, so changing the first one affects only the two loads between them. Space Switch Speed
 verifies that re-establishing `adrp` is present and refuses to patch without it.
 
 **Borrowing `v3` is safe.** Both encodings Apple ships — `movi.2d v3, #0` and
@@ -141,7 +141,7 @@ range (±4 GB), so nothing in the mapped image is overwritten to make room.
 
 ## Locating it without hardcoded addresses
 
-Addresses change with every Dock build, so SpaceSwitchSpeed matches the integrator by
+Addresses change with every Dock build, so Space Switch Speed matches the integrator by
 shape. Matching one *fixed sequence* of instructions turns out not to survive contact
 with the compiler, though. Running the locator against shipping Dock binaries extracted
 from Apple's publicly distributed restore images — `make fetch-dock MACOS=15.0` then
@@ -207,8 +207,10 @@ in memory.
 
 `task_for_pid` against Dock needs two separate things:
 
-- **SIP disabled**, because Dock is an Apple platform binary and AMFI otherwise refuses
-- **root**, because SIP being off makes the operation possible, not permitted
+- **SIP's debugging restrictions off** — `csrutil enable --without debug` is enough,
+  and no other part of SIP is involved — because Dock is an Apple platform binary and
+  AMFI otherwise refuses
+- **root**, because that check makes the operation possible, not permitted
 
 Self-signing `com.apple.system-task-ports` does not work: AMFI kills the process. That
 entitlement is reserved for Apple-signed tools, which is why `lldb` can attach

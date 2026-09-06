@@ -1,4 +1,4 @@
-// SpaceSwitchSpeed — speed control for the macOS Space-switch animation.
+// Space Switch Speed — speed control for the macOS Space-switch animation.
 // Copyright (C) 2026 Biser Atanasov. Licensed under AGPL-3.0-or-later.
 // See LICENSE. This program comes with ABSOLUTELY NO WARRANTY.
 
@@ -20,8 +20,14 @@ public final class OwningApp {
 
     /// `recorded` is where the app was when the helper was installed. The
     /// fallbacks cover an app that was run from a disk image and installed
-    /// properly afterwards.
-    public init(recorded: String, fallbacks: [String] = ["/Applications/SpaceSwitchSpeed.app"]) {
+    /// properly afterwards, and the bundle name this app shipped under before
+    /// it took a space-separated one.
+    public init(
+        recorded: String,
+        fallbacks: [String] = [
+            "/Applications/Space Switch Speed.app", "/Applications/SpaceSwitchSpeed.app",
+        ]
+    ) {
         candidates = [recorded] + fallbacks.filter { $0 != recorded }
         _ = locate()
     }

@@ -34,7 +34,7 @@ let bleed: CGFloat = 32
 let iconSize: CGFloat = 128
 let iconCentres = (app: CGPoint(x: 168, y: 224), applications: CGPoint(x: 472, y: 224))
 
-let title = "SpaceSwitchSpeed"
+let title = "Space Switch Speed"
 let subtitle = "Drag the app into Applications to install"
 
 func colour(_ hex: UInt32) -> NSColor {

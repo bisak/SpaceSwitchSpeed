@@ -37,7 +37,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
-		000000000000000000000020 /* SpaceSwitchSpeed.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SpaceSwitchSpeed.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		000000000000000000000020 /* Space Switch Speed.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Space Switch Speed.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		000000000000000000000021 /* spaceswitchspeed */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = spaceswitchspeed; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -78,7 +78,7 @@
 		000000000000000000000003 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				000000000000000000000020 /* SpaceSwitchSpeed.app */,
+				000000000000000000000020 /* Space Switch Speed.app */,
 				000000000000000000000021 /* spaceswitchspeed */,
 			);
 			name = Products;
@@ -109,7 +109,7 @@
 				000000000000000000000061 /* SpaceSwitchSpeedKit */,
 			);
 			productName = SpaceSwitchSpeed;
-			productReference = 000000000000000000000020 /* SpaceSwitchSpeed.app */;
+			productReference = 000000000000000000000020 /* Space Switch Speed.app */;
 			productType = "com.apple.product-type.application";
 		};
 		000000000000000000000011 /* SpaceSwitchSpeedHelper */ = {
@@ -281,11 +281,11 @@
 					COMBINE_HIDPI_IMAGES = YES;
 					ENABLE_HARDENED_RUNTIME = YES;
 					GENERATE_INFOPLIST_FILE = YES;
-					INFOPLIST_KEY_CFBundleDisplayName = SpaceSwitchSpeed;
+					INFOPLIST_KEY_CFBundleDisplayName = "Space Switch Speed";
 					INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
 					INFOPLIST_KEY_NSHumanReadableCopyright = "Copyright © 2026 Biser Atanasov. AGPL-3.0-or-later. No warranty.";
 					PRODUCT_BUNDLE_IDENTIFIER = com.bisak.spaceswitchspeed;
-					PRODUCT_NAME = "$(TARGET_NAME)";
+					PRODUCT_NAME = "Space Switch Speed";
 					SWIFT_EMIT_LOC_STRINGS = YES;
 			};
 			name = Debug;
@@ -300,11 +300,11 @@
 					COMBINE_HIDPI_IMAGES = YES;
 					ENABLE_HARDENED_RUNTIME = YES;
 					GENERATE_INFOPLIST_FILE = YES;
-					INFOPLIST_KEY_CFBundleDisplayName = SpaceSwitchSpeed;
+					INFOPLIST_KEY_CFBundleDisplayName = "Space Switch Speed";
 					INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
 					INFOPLIST_KEY_NSHumanReadableCopyright = "Copyright © 2026 Biser Atanasov. AGPL-3.0-or-later. No warranty.";
 					PRODUCT_BUNDLE_IDENTIFIER = com.bisak.spaceswitchspeed;
-					PRODUCT_NAME = "$(TARGET_NAME)";
+					PRODUCT_NAME = "Space Switch Speed";
 					SWIFT_EMIT_LOC_STRINGS = YES;
 			};
 			name = Release;

@@ -6,7 +6,7 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "000000000000000000000010"
-               BuildableName = "SpaceSwitchSpeed.app"
+               BuildableName = "Space Switch Speed.app"
                BlueprintName = "SpaceSwitchSpeed"
                ReferencedContainer = "container:SpaceSwitchSpeed.xcodeproj">
             </BuildableReference>
@@ -22,7 +22,7 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "000000000000000000000010"
-            BuildableName = "SpaceSwitchSpeed.app"
+            BuildableName = "Space Switch Speed.app"
             BlueprintName = "SpaceSwitchSpeed"
             ReferencedContainer = "container:SpaceSwitchSpeed.xcodeproj">
          </BuildableReference>
@@ -33,7 +33,7 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "000000000000000000000010"
-            BuildableName = "SpaceSwitchSpeed.app"
+            BuildableName = "Space Switch Speed.app"
             BlueprintName = "SpaceSwitchSpeed"
             ReferencedContainer = "container:SpaceSwitchSpeed.xcodeproj">
          </BuildableReference>

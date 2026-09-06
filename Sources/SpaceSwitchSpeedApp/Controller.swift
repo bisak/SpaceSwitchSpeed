@@ -1,4 +1,4 @@
-// SpaceSwitchSpeed — speed control for the macOS Space-switch animation.
+// Space Switch Speed — speed control for the macOS Space-switch animation.
 // Copyright (C) 2026 Biser Atanasov. Licensed under AGPL-3.0-or-later.
 // See LICENSE. This program comes with ABSOLUTELY NO WARRANTY.
 
@@ -21,7 +21,7 @@ final class Controller: ObservableObject {
     @Published var confirmingRemoval = false
 
     enum Note: Equatable {
-        case needsSIPDisabled
+        case needsDebuggingRestrictionsOff
         /// The helper was switched off under Login Items.
         case switchedOff
         /// This app's own failure; it stands until a change succeeds.
@@ -44,7 +44,7 @@ final class Controller: ObservableObject {
         stop = position
         committed = position
 
-        if !SystemIntegrityProtection.allowsTaskForPID { note = .needsSIPDisabled }
+        if !SystemIntegrityProtection.allowsTaskForPID { note = .needsDebuggingRestrictionsOff }
 
         poll = Task { [weak self] in
             while !Task.isCancelled {
@@ -56,7 +56,7 @@ final class Controller: ObservableObject {
 
     deinit { poll?.cancel() }
 
-    var isEditable: Bool { note != .needsSIPDisabled && !busy }
+    var isEditable: Bool { note != .needsDebuggingRestrictionsOff && !busy }
 
     /// The stop the slider is resting on.
     var preset: Speed.Preset { Speed.presets[Int(stop)] }
@@ -64,7 +64,7 @@ final class Controller: ObservableObject {
     // MARK: - Changing the setting
 
     func commit() {
-        guard note != .needsSIPDisabled, stop != committed else { return }
+        guard note != .needsDebuggingRestrictionsOff, stop != committed else { return }
         apply(stop: stop)
     }
 
@@ -72,7 +72,7 @@ final class Controller: ObservableObject {
         SMAppService.openSystemSettingsLoginItems()
     }
 
-    /// Takes SpaceSwitchSpeed off the machine: Dock back to stock, the helper and
+    /// Takes Space Switch Speed off the machine: Dock back to stock, the helper and
     /// every file it wrote gone, and this app's own preferences with them. All
     /// that is left is the app itself, for the user to move to the Trash.
     func removeEverything() {
@@ -170,7 +170,7 @@ final class Controller: ObservableObject {
     /// The helper's last word is the truth about Dock, so its error stands
     /// until it reports success. This app's own failures are left alone.
     private func checkForTrouble() {
-        guard note != .needsSIPDisabled, !busy else { return }
+        guard note != .needsDebuggingRestrictionsOff, !busy else { return }
         if Self.helperIsSwitchedOff {
             note = .switchedOff
             return
@@ -185,8 +185,7 @@ final class Controller: ObservableObject {
     }
 
     /// Deliberately does not use `url(forAuxiliaryExecutable:)`: that searches
-    /// Contents/MacOS, where a case-insensitive filesystem makes "spaceswitchspeed"
-    /// and the bundle executable "SpaceSwitchSpeed" the same file.
+    /// Contents/MacOS, and the helper is copied into Contents/Helpers.
     private static let helper = Bundle.main.bundleURL
         .appendingPathComponent("Contents/Helpers/spaceswitchspeed")
 }

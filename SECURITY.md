@@ -12,10 +12,10 @@ rather I didn't. There is no bounty.
 
 ## Already known, so not a finding
 
-**SIP has to be off.** SpaceSwitchSpeed cannot work with System Integrity Protection
-enabled, and the tradeoff is spelled out in
-[the README](README.md#disabling-system-integrity-protection). Reports that come down to
-"turning SIP off weakens macOS" are correct and already documented, so I'll close them.
+**SIP's debugging restrictions have to be off.** Space Switch Speed cannot open Dock's
+task port with them on, and the tradeoff is spelled out in
+[the README](README.md#system-integrity-protection). Reports that come down to "weakening
+SIP weakens macOS" are correct and already documented, so I'll close them.
 
 **Admin users can write the settings file.** Deliberate, and explained below.
 
