@@ -100,17 +100,6 @@ public struct SpringModel: Sendable {
 
     // MARK: - The single knob
 
-    /// Damping ratio for a speed setting.
-    ///
-    /// At `speed == 1` this is whatever Apple ships on this display, so the
-    /// stock setting reproduces stock exactly. As the animation is sped up the
-    /// ratio rides toward critical damping: the quickest arrival that still
-    /// cannot overshoot, which is what the extra pace should buy.
-    public func damping(forSpeed speed: Double) -> Double {
-        let s = speed.clamped(to: Speed.range)
-        return stockDamping + (1.0 - stockDamping) * (1 - s)
-    }
-
     /// Damping ratio giving a peak overshoot, from the standard second-order
     /// relation `exp(-pi z / sqrt(1 - z^2))`.
     ///
@@ -150,14 +139,19 @@ public struct SpringModel: Sendable {
 
     /// Coefficients for a speed setting, optionally overriding damping.
     ///
+    /// Damping stays at whatever the display makes it, so speed 1.0 reproduces
+    /// stock exactly. Varying it with speed was measured and earned nothing:
+    /// at most a frame of arrival and a tenth of a percent of overshoot, at
+    /// both 60 and 120 Hz.
+    ///
     /// Speed alone decides the pace. A chosen damping changes only how the
-    /// motion arrives, never when, so the two controls stay independent.
+    /// motion arrives, never when, so the two stay independent.
     public func coefficients(speed: Double, damping override: Double? = nil) -> (
         gain: Double, retention: Double
     ) {
         let s = speed.clamped(to: Speed.range)
         let automatic = coefficients(
-            timeConstant: stockTimeConstant * s, damping: damping(forSpeed: s))
+            timeConstant: stockTimeConstant * s, damping: stockDamping)
         guard let zeta = override else { return automatic }
 
         let pace = simulate(gain: automatic.gain, retention: automatic.retention).arrival

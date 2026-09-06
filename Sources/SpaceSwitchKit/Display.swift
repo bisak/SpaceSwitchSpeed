@@ -13,11 +13,16 @@ public enum Display {
     /// Dock falls back to 60 Hz when the window server reports no timing.
     public static let fallbackRefresh = 60.0
 
-    public static func mainRefreshRate() -> Double {
+    /// The main display's refresh rate, or nil when it cannot be determined.
+    ///
+    /// Distinguishing "cannot tell" from "60 Hz" matters: a launch daemon has
+    /// no window server session of its own and may get nothing here, in which
+    /// case it should use the rate recorded by whatever last ran inside a
+    /// session rather than assume the fallback.
+    public static func detectedRefreshRate() -> Double? {
         let id = CGMainDisplayID()
-        if let mode = CGDisplayCopyDisplayMode(id) {
-            let hz = mode.refreshRate
-            if hz > 0 { return hz }
+        if let mode = CGDisplayCopyDisplayMode(id), mode.refreshRate > 0 {
+            return mode.refreshRate
         }
         // Built-in panels routinely report 0 through CoreGraphics; the display
         // link still knows the nominal period.
@@ -28,6 +33,8 @@ public enum Display {
                 return Double(period.timeScale) / Double(period.timeValue)
             }
         }
-        return fallbackRefresh
+        return nil
     }
+
+    public static func mainRefreshRate() -> Double { detectedRefreshRate() ?? fallbackRefresh }
 }

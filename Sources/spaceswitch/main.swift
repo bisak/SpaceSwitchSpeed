@@ -162,7 +162,7 @@ do {
             print(
                 String(
                     format: "  %-10s  %.2f    %.3f     %4.0f ms   %4.0f ms   %.2fx",
-                    (p.name as NSString).utf8String!, p.value, model.damping(forSpeed: p.value),
+                    (p.name as NSString).utf8String!, p.value, model.stockDamping,
                     r.arrival * 1000, r.settle * 1000, r.arrival / stock.arrival))
         }
 
@@ -252,7 +252,7 @@ do {
             print(
                 String(
                     format: "speed %.2f  damping %.3f  ->  gain %.6f  retention %.6f",
-                    speed, dampingArg ?? model.damping(forSpeed: speed), g, a))
+                    speed, dampingArg ?? model.stockDamping, g, a))
             print(
                 String(
                     format: "arrives in %.0f ms (stock %.0f ms, %.2fx), settles %.0f ms, overshoot %.1f%%",

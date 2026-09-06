@@ -15,8 +15,8 @@ public struct Configuration: Codable, Equatable, Sendable {
     /// Overrides the damping ratio derived from `speed`. Nil means "follow the
     /// single-knob rule", which is what the app exposes by default.
     public var damping: Double?
-    /// Recorded by whichever component last ran inside a login session. A root
-    /// helper has no window server connection to ask, so it needs the hint.
+    /// Recorded by whichever component last ran inside a login session, and
+    /// used only when the helper cannot read the refresh rate itself.
     public var lastKnownRefreshHz: Double?
 
     public init(

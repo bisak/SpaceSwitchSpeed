@@ -88,19 +88,17 @@ but it means a naive "set these numbers" tool would feel wrong on most Macs.
 
 SpaceSwitch works in refresh-independent terms instead — a time constant and a damping
 ratio — and converts back for whatever display you actually have. The speed slider
-scales the time constant; damping starts at your display's stock value and rides toward
-critical damping (the fastest arrival that cannot overshoot) as you speed things up.
+scales the time constant; damping stays at whatever your display makes it.
 
-So `1.00` reproduces stock **exactly**, on any Mac, and every setting below it is a
-deliberate point on a designed curve rather than a guess.
+So `1.00` reproduces stock **exactly** on any Mac, and `0.50` really is half.
 
 | Preset | Speed | 120 Hz arrival | 60 Hz arrival | Overshoot |
 |---|---|---|---|---|
 | Default | 1.00 | 317 ms | 283 ms | none |
-| Gentle | 0.75 | 242 ms | 233 ms | none |
-| Balanced | 0.50 | 167 ms | 167 ms | none |
-| Quick | 0.35 | 125 ms | 117 ms | none |
-| Instant | 0.20 | 75 ms | 67 ms | none |
+| Gentle | 0.75 | 242 ms | 217 ms | none |
+| Balanced | 0.50 | 158 ms | 150 ms | none |
+| Quick | 0.35 | 108 ms | 100 ms | none |
+| Instant | 0.20 | 67 ms | 67 ms | none |
 
 ## Requirements
 

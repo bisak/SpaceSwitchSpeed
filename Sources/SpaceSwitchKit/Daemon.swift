@@ -52,7 +52,11 @@ public final class Daemon: @unchecked Sendable {
     private func reconcile(because reason: String) {
         let config = Configuration.load()
         do {
-            let engine = try Engine(refreshHz: config.lastKnownRefreshHz)
+            // Ask the display first, so a monitor change is picked up without
+            // the app having to run; the recorded rate covers the case where a
+            // daemon cannot reach the window server at all.
+            let engine = try Engine(
+                refreshHz: Display.detectedRefreshRate() ?? config.lastKnownRefreshHz)
             let status: Status
             if config.enabled {
                 status = try engine.apply(speed: config.speed, damping: config.damping)
