@@ -143,9 +143,9 @@ range (±4 GB), so nothing in the mapped image is overwritten to make room.
 
 Addresses change with every Dock build, so SpaceSwitchSpeed matches the integrator by
 shape. Matching one *fixed sequence* of instructions turns out not to survive contact
-with the compiler, though. Running the locator against shipping Dock binaries lifted
-from Apple's restore images — `make fetch-dock MACOS=15.0` then `make check-dock DOCK=…`,
-which is how each row below was produced:
+with the compiler, though. Running the locator against shipping Dock binaries extracted
+from Apple's publicly distributed restore images — `make fetch-dock MACOS=15.0` then
+`make check-dock DOCK=…`, which is how each row below was produced:
 
 | macOS | Dock | Velocity | `dt` multiply | Gain zero |
 |---|---|---|---|---|

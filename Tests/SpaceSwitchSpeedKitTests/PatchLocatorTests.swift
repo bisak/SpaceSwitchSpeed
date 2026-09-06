@@ -13,7 +13,7 @@ import Testing
 /// kept in a register, and which of the two `movi` encodings zeroes the gain — so
 /// these windows are the regression net for `findLoop` being matched by data flow
 /// rather than by one fixed sequence. Windows are the instructions from the
-/// preamble through the rubber band, lifted from `__text` at their real addresses
+/// preamble through the rubber band, taken from `__text` at their real addresses
 /// so `adrp` still decodes correctly.
 @Suite("Patch locator")
 struct PatchLocatorTests {
