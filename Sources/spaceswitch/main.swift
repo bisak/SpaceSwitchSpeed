@@ -25,6 +25,7 @@ let usage = """
                            critical as speed increases.
       --refresh <hz>       Assume this refresh rate instead of detecting it.
       --dry-run            Print what would change without touching Dock.
+      --keep               With `uninstall`, leave the running Dock as it is.
       --json               Machine-readable output.
       --help               This text.
 
@@ -48,6 +49,7 @@ var refreshArg: Double?
 var command = "apply"
 var json = false
 var dryRun = false
+var keepCurrent = false
 
 func fail(_ message: String) -> Never {
     FileHandle.standardError.write(Data("spaceswitch: \(message)\n".utf8))
@@ -66,6 +68,7 @@ while index < args.count {
     case "--help", "-h": print(usage); exit(0)
     case "--json": json = true
     case "--dry-run": dryRun = true
+    case "--keep": keepCurrent = true
     case "--damping":
         index += 1
         guard index < args.count, let v = Double(args[index]) else { fail("--damping needs a number") }
@@ -220,12 +223,19 @@ do {
             """)
 
     case "uninstall":
-        var config = Configuration.load()
-        config.enabled = false
-        try? config.save()
-        if let engine = try? Engine(refreshHz: refreshArg) { try? engine.revert() }
+        // --keep leaves the running Dock alone, so the setting stays until Dock
+        // or the Mac restarts and nothing puts it back.
+        if !keepCurrent {
+            var config = Configuration.load()
+            config.enabled = false
+            try? config.save()
+            if let engine = try? Engine(refreshHz: refreshArg) { try? engine.revert() }
+        }
         try HelperInstall.uninstall()
-        print("Helper removed and Dock restored to stock.")
+        print(
+            keepCurrent
+                ? "Helper removed. Dock keeps this setting until it restarts."
+                : "Helper removed and Dock restored to stock.")
 
     default:
         guard let speed = speedArg else {

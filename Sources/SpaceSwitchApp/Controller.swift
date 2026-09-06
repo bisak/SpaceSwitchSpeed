@@ -6,11 +6,13 @@ import Combine
 import Foundation
 import SpaceSwitchKit
 
-/// Backs the one control the window has.
+/// Backs the controls the window has.
 ///
 /// Changing Dock needs root, which the app does not have. Rather than making
 /// that the user's problem, the first change they make authorises a background
-/// job once and everything after it is silent.
+/// helper once and everything after it is silent. Without that helper each
+/// change costs an authorisation prompt of its own, which is what turning off
+/// "apply after restarting" trades away.
 @MainActor
 final class Controller: ObservableObject {
     @Published var stop: Double
@@ -21,10 +23,16 @@ final class Controller: ObservableObject {
     /// follows the speed automatically, which is what almost everyone wants.
     @Published private(set) var damping: Double?
 
+    /// Whether the background helper is installed. It is the only thing that
+    /// brings the setting back after Dock or the Mac restarts.
+    @Published private(set) var runsAtLogin: Bool
+
     enum Note: Equatable {
         case needsSIPDisabled
         case failed(String)
     }
+
+    let model = SpringModel(dt: Display.mainFrameInterval())
 
     private var committed: Double
     private var poll: Task<Void, Never>?
@@ -36,6 +44,7 @@ final class Controller: ObservableObject {
         stop = position
         committed = position
         damping = config.damping
+        runsAtLogin = HelperInstall.isInstalled
 
         if !SystemIntegrityProtection.isDisabled { note = .needsSIPDisabled }
 
@@ -51,60 +60,76 @@ final class Controller: ObservableObject {
 
     var isEditable: Bool { note != .needsSIPDisabled && !busy }
 
-    let model = SpringModel(dt: Display.mainFrameInterval())
-
     /// The damping actually in force, whether chosen or derived.
     var effectiveDamping: Double {
         damping ?? model.damping(forSpeed: Speed.presets[Int(stop)].value)
     }
 
-    func setDamping(_ value: Double?) {
-        damping = value
-        guard HelperInstall.isInstalled else { return commit() }
-        write(stop)
-    }
-
-    // MARK: - Committing a change
+    // MARK: - Changing the setting
 
     func commit() {
-        guard note != .needsSIPDisabled else { return }
-        let target = stop
-
-        guard HelperInstall.isInstalled else {
-            Task {
-                if await authorise() {
-                    write(target)
-                    committed = target
-                } else {
-                    stop = committed
-                }
-            }
-            return
-        }
-        write(target)
-        committed = target
+        guard note != .needsSIPDisabled, stop != committed else { return }
+        apply(stop: stop, damping: damping)
     }
 
-    private func write(_ stop: Double) {
+    func setDamping(_ value: Double?) {
+        damping = value
+        apply(stop: stop, damping: value)
+    }
+
+    func setRunsAtLogin(_ enabled: Bool) {
+        guard enabled != runsAtLogin else { return }
+        Task {
+            // Removing the helper leaves Dock as it is; the setting simply
+            // stops coming back once Dock or the Mac restarts.
+            guard await authorise(enabled ? "install" : "uninstall --keep") else { return }
+            runsAtLogin = HelperInstall.isInstalled
+        }
+    }
+
+    private func apply(stop: Double, damping: Double?) {
         let preset = Speed.presets[Int(stop)]
         var config = Configuration.load()
         config.speed = preset.value
         config.enabled = preset.value < Speed.stock
         config.damping = damping
         config.lastKnownRefreshHz = Display.mainRefreshRate()
-        do {
-            try config.save()
-            note = nil
-        } catch {
-            note = .failed("Could not save your setting.")
+
+        // With a helper running, saving is the whole job: it notices the change
+        // and applies it within half a second.
+        if HelperInstall.isInstalled {
+            do {
+                try config.save()
+                note = nil
+                committed = stop
+            } catch {
+                note = .failed("Could not save your setting.")
+            }
+            return
+        }
+
+        // Otherwise the change has to carry its own privileges. Installing the
+        // helper is the default; without it the tool applies the value once.
+        Task {
+            let command = runsAtLogin ? "install" : String(format: "%.2f", preset.value)
+            if await authorise(command) {
+                try? config.save()
+                self.committed = stop
+                self.runsAtLogin = HelperInstall.isInstalled
+                self.note = nil
+            } else {
+                self.stop = self.committed
+            }
         }
     }
 
-    private enum Outcome: Sendable { case installed, cancelled, failed }
+    // MARK: - Authorisation
 
-    /// Installs the background job. macOS shows its own authorisation prompt, so
-    /// the app never asks for a password itself.
-    private func authorise() async -> Bool {
+    private enum Outcome: Sendable { case succeeded, cancelled, failed }
+
+    /// macOS shows its own authorisation prompt, so the app never asks for a
+    /// password itself.
+    private func authorise(_ arguments: String) async -> Bool {
         guard let tool = Self.commandLineTool() else {
             note = .failed("SpaceSwitch is missing part of itself. Reinstall it.")
             return false
@@ -112,24 +137,25 @@ final class Controller: ObservableObject {
         busy = true
         defer { busy = false }
 
-        switch await Self.runInstaller(at: tool) {
-        case .installed: return true
+        switch await Self.run(tool, arguments) {
+        case .succeeded: return true
         case .cancelled: return false
         case .failed:
-            note = .failed("Could not start SpaceSwitch.")
+            note = .failed("Could not apply your setting.")
             return false
         }
     }
 
     /// Runs off the main actor: the authorisation prompt blocks until answered.
-    private nonisolated static func runInstaller(at tool: URL) async -> Outcome {
+    private nonisolated static func run(_ tool: URL, _ arguments: String) async -> Outcome {
         await withCheckedContinuation { continuation in
             DispatchQueue.global(qos: .userInitiated).async {
                 let escaped = tool.path.replacingOccurrences(of: "\"", with: "\\\"")
                 let process = Process()
                 process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
                 process.arguments = [
-                    "-e", "do shell script \"'\(escaped)' install\" with administrator privileges",
+                    "-e",
+                    "do shell script \"'\(escaped)' \(arguments)\" with administrator privileges",
                 ]
                 let pipe = Pipe()
                 process.standardError = pipe
@@ -142,7 +168,7 @@ final class Controller: ObservableObject {
                 process.waitUntilExit()
 
                 if process.terminationStatus == 0 {
-                    continuation.resume(returning: .installed)
+                    continuation.resume(returning: .succeeded)
                 } else {
                     // -128 is the user dismissing the authorisation prompt.
                     continuation.resume(returning: errorText.contains("-128") ? .cancelled : .failed)
@@ -150,6 +176,8 @@ final class Controller: ObservableObject {
             }
         }
     }
+
+    // MARK: - Trouble
 
     /// Surfaces only failures the user can do something about, and only once
     /// they have persisted past a retry.
@@ -171,8 +199,7 @@ final class Controller: ObservableObject {
             Bundle.main.bundleURL.appendingPathComponent("Contents/Helpers/spaceswitch"),
             URL(fileURLWithPath: "/opt/homebrew/bin/spaceswitch"),
             URL(fileURLWithPath: "/usr/local/bin/spaceswitch"),
-        ]
-        .first { FileManager.default.isExecutableFile(atPath: $0.path) }
+        ].first { FileManager.default.isExecutableFile(atPath: $0.path) }
     }
 }
 

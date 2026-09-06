@@ -13,18 +13,23 @@ struct SettingsView: View {
         Form {
             Section {
                 LabeledContent("Switching speed") {
-                    HStack(spacing: 10) {
-                        // Tinting the whole row would override the slider's
-                        // accent fill, so the glyphs are styled on their own.
-                        Image(systemName: "tortoise.fill")
-                            .foregroundStyle(.secondary)
-                        SteppedSlider(
-                            value: $controller.stop,
-                            stops: Speed.presets.count
-                        ) { controller.commit() }
-                        Image(systemName: "hare.fill")
-                            .foregroundStyle(.secondary)
+                    // The value labels belong to the slider rather than to a
+                    // stack around it, so the framework aligns them with the
+                    // track instead of with the tick marks below it.
+                    Slider(
+                        value: $controller.stop,
+                        in: 0...Double(Speed.presets.count - 1),
+                        step: 1
+                    ) {
+                        Text("Switching speed")
+                    } minimumValueLabel: {
+                        Image(systemName: "tortoise.fill").foregroundStyle(.secondary)
+                    } maximumValueLabel: {
+                        Image(systemName: "hare.fill").foregroundStyle(.secondary)
+                    } onEditingChanged: { editing in
+                        if !editing { controller.commit() }
                     }
+                    .labelsHidden()
                     .imageScale(.large)
                     .frame(width: 270)
                     .padding(.vertical, 4)
@@ -55,6 +60,10 @@ private struct OptionsSheet: View {
     @State private var automatic: Bool
     @State private var damping: Double
 
+    private var runsAtLogin: Binding<Bool> {
+        Binding(get: { controller.runsAtLogin }, set: { controller.setRunsAtLogin($0) })
+    }
+
     init(controller: Controller) {
         self.controller = controller
         _automatic = State(initialValue: controller.damping == nil)
@@ -64,6 +73,18 @@ private struct OptionsSheet: View {
     var body: some View {
         VStack(spacing: 0) {
             Form {
+                Section {
+                    Toggle("Apply after restarting", isOn: runsAtLogin)
+                } footer: {
+                    Text(
+                        "The setting lives in Dock's memory, so it is cleared whenever Dock or your Mac restarts. A small background helper puts it back."
+                    )
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.leading)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+
                 Section {
                     Toggle("Set damping automatically", isOn: $automatic)
                     LabeledContent("Damping") {
