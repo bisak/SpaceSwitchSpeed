@@ -15,7 +15,8 @@ public struct Status {
 /// Applies and removes the Space-switch patch in the running Dock.
 ///
 /// Nothing is written to disk and nothing outlives the Dock process: restarting
-/// Dock restores stock behaviour unconditionally, which is the tool's safety net.
+/// Dock restores stock behaviour unconditionally, and the helper is what puts the
+/// patch back.
 public final class Engine {
     private let target: DockTarget
     private let image: MachOImage
@@ -27,12 +28,20 @@ public final class Engine {
         model = SpringModel()
     }
 
-    /// Best effort across every Dock, for the paths that take Space Switch Speed
-    /// off the machine.
-    public static func revertAll() {
+    /// Every Dock put back to stock, for the paths that take Space Switch Speed
+    /// off the machine. Returns the Docks it could not put back, so the caller
+    /// can say so rather than report a clean removal over a patched Dock.
+    @discardableResult
+    public static func revertAll() -> [(pid: pid_t, error: Error)] {
+        var failures: [(pid: pid_t, error: Error)] = []
         for pid in DockTarget.findDocks() {
-            if let engine = try? Engine(pid: pid) { try? engine.revert() }
+            do {
+                try Engine(pid: pid).revert()
+            } catch {
+                failures.append((pid, error))
+            }
         }
+        return failures
     }
 
     // MARK: - Inspection
@@ -46,9 +55,7 @@ public final class Engine {
             retention = try target.readDouble(sites.stockRetentionAddress)
             gain = SpringModel.stockGain
         case .patched:
-            guard let page = sites.scratchPage else {
-                throw SpaceSwitchSpeedError.verificationFailed("no scratch page")
-            }
+            let page = try scratch(of: sites).page
             retention = try target.readDouble(page)
             gain = try target.readDouble(page + 8)
         }
@@ -61,6 +68,22 @@ public final class Engine {
         )
     }
 
+    /// The scratch page is trusted only when it carries the word `install`
+    /// stashed there. A build whose preamble merely resembles the patched shape
+    /// has no such word, and writing into its page would corrupt Dock's own
+    /// constants.
+    private func scratch(of sites: PatchSites) throws -> (page: UInt64, gainZero: UInt32) {
+        guard let page = sites.scratchPage else {
+            throw SpaceSwitchSpeedError.verificationFailed("no scratch page")
+        }
+        let stored = try target.readWord(page + 16)
+        guard ARM64.decodeMOVIzero(stored) == sites.gainReg else {
+            throw SpaceSwitchSpeedError.verificationFailed(
+                "the scratch page does not carry the patch's stash")
+        }
+        return (page, stored)
+    }
+
     // MARK: - Apply
 
     @discardableResult
@@ -71,9 +94,7 @@ public final class Engine {
         switch sites.state {
         case .patched:
             // Instructions are already in place; only the constants change.
-            guard let page = sites.scratchPage else {
-                throw SpaceSwitchSpeedError.verificationFailed("no scratch page")
-            }
+            let page = try scratch(of: sites).page
             try target.writeDouble(page, retention)
             try target.writeDouble(page + 8, gain)
         case .stock:
@@ -95,17 +116,17 @@ public final class Engine {
     }
 
     private func install(_ sites: PatchSites, gain: Double, retention: Double) throws {
+        guard let gainZero = sites.stockGainZeroWord else {
+            throw SpaceSwitchSpeedError.verificationFailed("no gain-zeroing instruction to stash")
+        }
         let scratch = try target.allocateScratch(near: sites.adrpSite)
         do {
             try target.writeDouble(scratch, retention)
             try target.writeDouble(scratch + 8, gain)
             // Apple has shipped two encodings of the gain-zeroing `movi`; keep the
             // one actually being replaced so revert restores this build's own word.
-            if let zero = sites.stockGainZeroWord { try target.writeWord(scratch + 16, zero) }
-
-            for (address, word) in try sites.patchWords(scratch: scratch) {
-                try target.writeWord(address, word)
-            }
+            try target.writeWord(scratch + 16, gainZero)
+            try target.writeWords(sites.patchWords(scratch: scratch))
         } catch {
             target.freeScratch(scratch)
             throw error
@@ -117,23 +138,10 @@ public final class Engine {
     public func revert() throws {
         let sites = try PatchLocator.locate(target: target, image: image)
         guard sites.state == .patched else { return }
+        let (page, gainZero) = try scratch(of: sites)
 
-        // Prefer the encoding this build actually used, stashed beside the
-        // constants at patch time; fall back to the 128-bit form when it is not
-        // there or does not decode as a zeroing of the right register, as after a
-        // patch applied by an older build.
-        var gainZero = sites.fallbackGainZeroWord
-        if let scratch = sites.scratchPage, let stored = try? target.readWord(scratch + 16),
-            ARM64.decodeMOVIzero(stored) == sites.gainReg
-        {
-            gainZero = stored
-        }
-
-        for (address, word) in try sites.stockWords(gainZero: gainZero) {
-            try target.writeWord(address, word)
-        }
-
-        if let scratch = sites.scratchPage { target.freeScratch(scratch) }
+        try target.writeWords(sites.stockWords(gainZero: gainZero))
+        target.freeScratch(page)
 
         let after = try PatchLocator.locate(target: target, image: image)
         guard after.state == .stock else {

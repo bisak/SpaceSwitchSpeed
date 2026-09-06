@@ -67,7 +67,9 @@ public enum ARM64 {
         let immhi = (w >> 5) & 0x7FFFF
         var imm = Int64((immhi << 2) | immlo)
         if imm & (1 << 20) != 0 { imm -= (1 << 21) }  // sign-extend 21 bits
-        return (w & 0x1F, UInt64(Int64(pc & ~0xFFF) + imm * 0x1000))
+        let page = Int64(bitPattern: pc & ~0xFFF) &+ imm * 0x1000
+        guard page >= 0 else { return nil }
+        return (w & 0x1F, UInt64(page))
     }
 
     /// `adrp Xd, page` — fails when the target is beyond ±4 GiB of `pc`.

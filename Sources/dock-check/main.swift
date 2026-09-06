@@ -73,6 +73,7 @@ private struct DockBinary {
     /// The tool only ever patches arm64e, so a file without that slice is a hard
     /// error rather than something to guess at.
     private static func arm64eSlice(_ data: Data) throws -> UInt64 {
+        guard data.count >= 8 else { throw Failure("not a Mach-O") }
         let magic = data.load(UInt32.self, at: 0)
         if magic == 0xFEED_FACF { return 0 }  // already a thin 64-bit image
         guard magic == 0xBEBA_FECA || magic == 0xBFBA_FECA else { throw Failure("not a Mach-O") }
@@ -166,7 +167,10 @@ private func check(_ dock: DockBinary) throws -> [String] {
         throw Failure("the sites move once patched, so revert would write to the wrong place")
     }
 
-    apply(try patched.stockWords(gainZero: sites.stockGainZeroWord ?? sites.fallbackGainZeroWord))
+    guard let gainZero = sites.stockGainZeroWord else {
+        throw Failure("no gain-zeroing instruction to restore")
+    }
+    apply(try patched.stockWords(gainZero: gainZero))
     guard words == stock else {
         let differing = zip(stock, words).filter { $0 != $1 }.count
         throw Failure("revert leaves \(differing) word(s) changed from stock")
@@ -180,8 +184,8 @@ private func hex(_ value: UInt64) -> String { String(value, radix: 16) }
 
 // MARK: - Entry point
 
-let arguments = CommandLine.arguments.dropFirst().filter { $0 != "-h" && $0 != "--help" }
-if CommandLine.arguments.contains("-h") || CommandLine.arguments.contains("--help") {
+let arguments = CommandLine.arguments.dropFirst()
+if arguments.contains("-h") || arguments.contains("--help") {
     print(
         """
         usage: dock-check [Dock binary | Dock.app]

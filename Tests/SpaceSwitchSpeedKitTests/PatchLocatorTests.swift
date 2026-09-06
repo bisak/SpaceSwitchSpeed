@@ -142,7 +142,9 @@ struct PatchLocatorTests {
     }
 
     /// Applying and undoing the patch has to leave Dock's `__text` exactly as
-    /// Apple shipped it, including which `movi` encoding zeroed the gain.
+    /// Apple shipped it, including which `movi` encoding zeroed the gain, using
+    /// the very words the engine writes and in the order it writes them: the
+    /// loads before the `adrp` that repoints them, the `adrp` first on the way back.
     @Test("patch and revert restore the stock words", arguments: fixtures)
     func roundTrip(_ f: Fixture) throws {
         var w = f.words
@@ -150,15 +152,12 @@ struct PatchLocatorTests {
         func index(_ site: UInt64) -> Int { Int((site - f.base) / 4) }
 
         let scratch = (f.base &+ 0x1000_0000) & ~0xFFF
-        let adrp = try #require(ARM64.adrp(d: sites.baseReg, page: scratch, at: sites.adrpSite))
-        let loadA = try #require(ARM64.ldrd(t: sites.retentionReg, n: sites.baseReg, offset: 0))
-        let loadG = try #require(ARM64.ldrd(t: sites.gainReg, n: sites.baseReg, offset: 8))
-
-        w[index(sites.retentionLoadSite)] = loadA
-        w[index(sites.gainLoadSite)] = loadG
-        w[index(sites.gainSite)] = ARM64.fmul(d: sites.errorReg, n: sites.errorReg, m: sites.gainReg)
-        w[index(sites.bandSite)] = ARM64.fneg(d: sites.bandDestReg, n: sites.positionReg)
-        w[index(sites.adrpSite)] = adrp
+        let patch = try sites.patchWords(scratch: scratch)
+        #expect(
+            patch.map(\.address) == [
+                sites.retentionLoadSite, sites.gainLoadSite, sites.gainSite, sites.bandSite, sites.adrpSite,
+            ])
+        for (address, word) in patch { w[index(address)] = word }
 
         // The patched image must still locate, at the same sites, with the
         // scratch page recoverable from the rewritten adrp alone.
@@ -170,18 +169,111 @@ struct PatchLocatorTests {
         #expect(after.stockRetentionOffset == sites.stockRetentionOffset)
         #expect(after.stockConstPage == sites.stockConstPage)
 
-        let backAdrp = try #require(
-            ARM64.adrp(d: after.baseReg, page: after.stockConstPage, at: after.adrpSite))
-        let backLoadA = try #require(
-            ARM64.ldrd(t: after.retentionReg, n: after.baseReg, offset: after.stockRetentionOffset))
-        w[index(after.adrpSite)] = backAdrp
-        w[index(after.retentionLoadSite)] = backLoadA
-        w[index(after.gainLoadSite)] = f.gainZero
-        w[index(after.gainSite)] = ARM64.fadd(d: after.errorReg, n: after.errorReg, m: after.errorReg)
-        w[index(after.bandSite)] = ARM64.fsub(
-            d: after.bandDestReg, n: after.gainReg, m: after.positionReg)
-
+        let stock = try after.stockWords(gainZero: f.gainZero)
+        #expect(stock.first?.address == after.adrpSite)
+        for (address, word) in stock { w[index(address)] = word }
         #expect(w == f.words)
+    }
+
+    /// An interrupted patch leaves the loads rewritten and the `adrp` still
+    /// stock: the patched shape with both `adrp`s naming the same page. Read as
+    /// patched, Dock's own constant page would become the scratch page, so every
+    /// such prefix is refused instead.
+    @Test("a half-applied patch is refused, not read as patched", arguments: fixtures)
+    func halfApplied(_ f: Fixture) throws {
+        let sites = try PatchLocator.locate(words: f.words, base: f.base)
+        let patch = try sites.patchWords(scratch: (f.base &+ 0x1000_0000) & ~0xFFF)
+        for count in 1..<patch.count {
+            var w = f.words
+            for (address, word) in patch.prefix(count) { w[Int((address - f.base) / 4)] = word }
+            #expect(throws: SpaceSwitchSpeedError.self, "\(count) of \(patch.count) words written") {
+                _ = try PatchLocator.locate(words: w, base: f.base)
+            }
+        }
+
+        // And the other way: no prefix of the revert may read as stock either,
+        // since stock means revert has nothing to do.
+        var patched = f.words
+        for (address, word) in patch { patched[Int((address - f.base) / 4)] = word }
+        let stock = try PatchLocator.locate(words: patched, base: f.base).stockWords(gainZero: f.gainZero)
+        for count in 1..<stock.count {
+            var w = patched
+            for (address, word) in stock.prefix(count) { w[Int((address - f.base) / 4)] = word }
+            #expect(throws: SpaceSwitchSpeedError.self, "\(count) of \(stock.count) words restored") {
+                _ = try PatchLocator.locate(words: w, base: f.base)
+            }
+        }
+    }
+
+    /// The stock guard reads the retention through the first `adrp` and the
+    /// code reads it through the second; they must agree or the guard checks
+    /// nothing.
+    @Test("stock adrps naming different pages are refused", arguments: fixtures)
+    func mismatchedPages(_ f: Fixture) throws {
+        let sites = try PatchLocator.locate(words: f.words, base: f.base)
+        var w = f.words
+        w[Int((sites.adrpSite - f.base) / 4)] = try #require(
+            ARM64.adrp(d: sites.baseReg, page: sites.stockConstPage + 0x1000, at: sites.adrpSite))
+        #expect(throws: SpaceSwitchSpeedError.self) {
+            _ = try PatchLocator.locate(words: w, base: f.base)
+        }
+    }
+
+    /// The patch borrows the register the stock code zeroes for the rubber
+    /// band, so anything else touching that register is a refusal: before the
+    /// band, and after it too, since `fneg` leaves the gain there, until
+    /// something redefines it.
+    @Test("touching the borrowed register is refused", arguments: fixtures)
+    func borrowedRegister(_ f: Fixture) throws {
+        let sites = try PatchLocator.locate(words: f.words, base: f.base)
+        func index(_ site: UInt64) -> Int { Int((site - f.base) / 4) }
+        let k = sites.gainReg
+        let before = index(sites.gainLoadSite) + 3  // a redundant adrp nothing checks
+        let after = index(sites.bandSite) + 1
+
+        let refused: [(what: String, at: Int, word: UInt32)] = [
+            ("fmul writing it", before, ARM64.fmul(d: k, n: 0, m: 1)),
+            ("fadd reading it", before, ARM64.fadd(d: 5, n: k, m: 0)),
+            ("fmadd writing it", before, Self.fmadd(d: k, n: 0, m: 1, a: 2)),
+            ("fmadd reading it as the addend", before, Self.fmadd(d: 5, n: 0, m: 1, a: k)),
+            ("fmov #imm writing it", before, 0x1E60_1000 | (0x70 << 13) | k),
+            ("fadd reading it after the band", after, ARM64.fadd(d: 5, n: k, m: 0)),
+            (
+                "a rubber band that writes it", index(sites.bandSite),
+                ARM64.fsub(d: k, n: k, m: sites.positionReg)
+            ),
+        ]
+        for edit in refused {
+            var w = f.words
+            w[edit.at] = edit.word
+            #expect(throws: SpaceSwitchSpeedError.self, "\(edit.what)") {
+                _ = try PatchLocator.locate(words: w, base: f.base)
+            }
+        }
+
+        let accepted: [(what: String, at: Int, word: UInt32)] = [
+            ("fmov #imm whose immediate spells the register", before, 0x1E60_1000 | (k << 16) | 7),
+            ("a write after the band, which ends its live range", after, ARM64.fmul(d: k, n: 0, m: 1)),
+        ]
+        for edit in accepted {
+            var w = f.words
+            w[edit.at] = edit.word
+            #expect(throws: Never.self, "\(edit.what)") {
+                _ = try PatchLocator.locate(words: w, base: f.base)
+            }
+        }
+
+        // Dock returns with `retab`; nothing after a return can depend on the register.
+        var w = f.words
+        w[after] = 0xD65F_0FFF
+        w[after + 1] = ARM64.fadd(d: 5, n: k, m: 0)
+        #expect(throws: Never.self, "a read after the function returns") {
+            _ = try PatchLocator.locate(words: w, base: f.base)
+        }
+    }
+
+    private static func fmadd(d: UInt32, n: UInt32, m: UInt32, a: UInt32) -> UInt32 {
+        0x1F40_0000 | (m << 16) | (a << 10) | (n << 5) | d
     }
 
     /// Uniqueness is the only thing standing between the tool and the three other

@@ -86,7 +86,10 @@ extension PatchSites {
 
     /// The five words `revert` writes to put Apple's own instructions back.
     /// `gainZero` is the encoding this build used, which is the one thing the
-    /// patched state cannot be asked for.
+    /// patched state cannot be asked for. The `adrp` goes first, so the retention
+    /// load never reads its stock offset off the scratch page, which is too small
+    /// for it; the gain load goes last, so an interrupted revert still reads as
+    /// patched rather than as stock with a spring that multiplies by zero.
     public func stockWords(gainZero: UInt32) throws -> [(address: UInt64, word: UInt32)] {
         guard let adrp = ARM64.adrp(d: baseReg, page: stockConstPage, at: adrpSite),
             let retention = ARM64.ldrd(t: retentionReg, n: baseReg, offset: stockRetentionOffset)
@@ -96,15 +99,11 @@ extension PatchSites {
         return [
             (adrpSite, adrp),
             (retentionLoadSite, retention),
-            (gainLoadSite, gainZero),
             (gainSite, ARM64.fadd(d: errorReg, n: errorReg, m: errorReg)),
             (bandSite, ARM64.fsub(d: bandDestReg, n: gainReg, m: positionReg)),
+            (gainLoadSite, gainZero),
         ]
     }
-
-    /// The zeroing `movi` to fall back on when the stashed one is unavailable,
-    /// as it is for a patch applied by an older build.
-    public var fallbackGainZeroWord: UInt32 { 0x6F00_E400 | gainReg }
 }
 
 public enum PatchLocator {
@@ -139,13 +138,20 @@ public enum PatchLocator {
 
         let addr = { (i: Int) in base + UInt64(i) * 4 }
 
-        // The gain register must survive from where it is established to the
-        // rubber band. Anything else writing it would silently corrupt both, and
-        // anything else *reading* it would be depending on the zero the patch
-        // replaces with the gain — which is the assumption borrowing the register
-        // rests on, so it is checked rather than trusted.
-        for i in (pre.gainLoadIndex + 1)...band.index where i != loop.gainIndex {
+        // The gain register must survive from where it is established for as
+        // long as it is live. Anything else writing it would silently corrupt
+        // both, and anything else *reading* it would be depending on the zero the
+        // patch replaces with the gain — which is the assumption borrowing the
+        // register rests on, so it is checked rather than trusted. The rubber
+        // band is the last use only while it is `fsub`; patched to `fneg`, it
+        // leaves the gain in the register, so the scan carries on past it until
+        // something redefines the register or the function returns.
+        let returns: Set<UInt32> = [0xD65F_03C0, 0xD65F_0BFF, 0xD65F_0FFF]  // ret, retaa, retab
+        let end = min(words.count - 1, loop.gainIndex + loopWindow)
+        for i in (pre.gainLoadIndex + 1)...end where i != loop.gainIndex {
+            if returns.contains(words[i]) { break }
             if writesFPRegister(words[i], pre.gainReg) {
+                if i > band.index { break }
                 throw SpaceSwitchSpeedError.unexpectedConstants(
                     "register d\(pre.gainReg) is overwritten at 0x\(String(addr(i), radix: 16))")
             }
@@ -190,6 +196,7 @@ public enum PatchLocator {
     /// The gain still anchors the match, and every other instruction is found by
     /// which register feeds it. Two matches remain a refusal.
     private static func findLoop(_ w: [UInt32]) -> Loop? {
+        guard w.count >= 6 else { return nil }
         var hit: Loop?
         for j in 3..<(w.count - 3) {
             // The gain: the hardcoded doubling while stock, the `fmul` that
@@ -308,6 +315,12 @@ public enum PatchLocator {
             else { continue }
             let recoveredOffset = neighbour.offset - 8
             if state == .stock && recoveredOffset != ldr.offset { continue }
+            // The patch points the first adrp at scratch, so the two name different
+            // pages once patched and the same page while stock. An interrupted
+            // patch, its loads rewritten and its adrp not yet, has the patched
+            // shape on one page; read as patched, Dock's own constant page would
+            // become the scratch page and the next apply would write into it.
+            guard (adrp.page == restore.page) == (state == .stock) else { continue }
 
             return Preamble(
                 state: state,
@@ -336,28 +349,49 @@ public enum PatchLocator {
 
     /// Conservative test for "this instruction reads scalar FP register `reg`".
     /// Covers the scalar floating-point data-processing space as a whole rather
-    /// than decoding each form, since over-reporting only causes a refusal. The
-    /// rubber band is the sole reader in every shipping build measured, so this
-    /// costs no coverage.
-    private static func readsFPRegister(_ w: UInt32, _ reg: UInt32) -> Bool {
+    /// than decoding each form, since over-reporting only causes a refusal —
+    /// except where a field that names a register in one form is an opcode or an
+    /// immediate in another, which would refuse a build for a register nobody
+    /// reads.
+    static func readsFPRegister(_ w: UInt32, _ reg: UInt32) -> Bool {
+        // Three sources: fmadd and its siblings.
+        if w & 0x5F00_0000 == 0x1F00_0000 {
+            return (w >> 5) & 0x1F == reg || (w >> 16) & 0x1F == reg || (w >> 10) & 0x1F == reg
+        }
         guard w & 0x5F20_0000 == 0x1E20_0000 else { return false }
-        return (w >> 5) & 0x1F == reg || (w >> 16) & 0x1F == reg
+        let form = (w >> 10) & 0x3F
+        // `fmov Dd, #imm` reads nothing, and the conversions from an integer
+        // register (scvtf, ucvtf, fmov from general) read no FP register.
+        if form & 0x7 == 0b100 { return false }
+        if form == 0, [0b010, 0b011, 0b111].contains((w >> 16) & 0x7) { return false }
+        // Bits 20:16 name a second source only in the two-source, conditional
+        // and register-compare forms; elsewhere they are an opcode.
+        let hasRm = form & 0x3 != 0 || (form == 0b001000 && (w >> 3) & 1 == 0)
+        return (w >> 5) & 0x1F == reg || (hasRm && (w >> 16) & 0x1F == reg)
     }
 
     /// Conservative test for "this instruction writes scalar FP register `reg`".
-    /// Over-reporting only causes a refusal, which is the safe direction.
-    private static func writesFPRegister(_ w: UInt32, _ reg: UInt32) -> Bool {
+    /// Over-reporting only causes a refusal, which is the safe direction; the
+    /// compares and the conversions to an integer register write no FP register.
+    static func writesFPRegister(_ w: UInt32, _ reg: UInt32) -> Bool {
+        // 64-bit SIMD pair load, in any addressing mode, which writes two registers.
+        if w & 0x7E40_0000 == 0x6C40_0000 { return w & 0x1F == reg || (w >> 10) & 0x1F == reg }
         guard w & 0x1F == reg else { return false }
-        // Scalar FP data processing (one, two and three source), and conversions.
-        if w & 0x5F20_0000 == 0x1E20_0000 { return true }
+        // Scalar FP data processing with three sources.
+        if w & 0x5F00_0000 == 0x1F00_0000 { return true }
+        // Scalar FP data processing with one or two sources, and conversions.
+        if w & 0x5F20_0000 == 0x1E20_0000 {
+            let form = (w >> 10) & 0x3F
+            if form == 0 { return [0b010, 0b011, 0b111].contains((w >> 16) & 0x7) }
+            return form & 0xF != 0b1000 && form & 0x3 != 0b01
+        }
         // SIMD modified-immediate (movi and friends).
         if w & 0x9FF8_0000 == 0x0F00_0000 { return true }
         // Vector register moves such as mov.16b (orr with identical sources).
         if w & 0xBFE0_FC00 == 0x0EA0_1C00 { return true }
-        // 64-bit SIMD loads: ldr d, ldur d, ldp d.
+        // 64-bit SIMD loads: ldr d scaled, and ldur d, ldr d pre- and post-indexed.
         if w & 0xFFC0_0000 == 0xFD40_0000 { return true }
-        if w & 0xFFE0_0C00 == 0xFC40_0000 { return true }
-        if w & 0x7FC0_0000 == 0x6D40_0000 { return true }
+        if w & 0xFFE0_0000 == 0xFC40_0000 { return true }
         return false
     }
 

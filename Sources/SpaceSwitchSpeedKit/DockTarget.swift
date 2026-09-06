@@ -48,6 +48,10 @@ public enum SpaceSwitchSpeedError: Error, CustomStringConvertible {
     }
 }
 
+extension SpaceSwitchSpeedError: LocalizedError {
+    public var errorDescription: String? { description }
+}
+
 /// A handle on one running Dock's address space.
 public final class DockTarget {
     public static let executable = "/System/Library/CoreServices/Dock.app/Contents/MacOS/Dock"
@@ -86,23 +90,39 @@ public final class DockTarget {
         return buffer
     }
 
+    /// Writes into memory that is already writable, which for this tool is only
+    /// the scratch page; `__TEXT` goes through `writeWords`.
     public func write(_ address: UInt64, _ data: Data) throws {
-        // __TEXT is mapped read-execute and shared copy-on-write. Requesting
-        // VM_PROT_COPY forces a private copy so the write cannot reach the file
-        // or any other process mapping the same page.
-        let kr = mach_vm_protect(
-            task, mach_vm_address_t(address), mach_vm_size_t(data.count), 0,
-            VM_PROT_READ | VM_PROT_WRITE | VM_PROT_COPY)
-        guard kr == KERN_SUCCESS else { throw SpaceSwitchSpeedError.machFailure("protect", kr) }
-        let wrote: kern_return_t = data.withUnsafeBytes { raw in
+        let kr: kern_return_t = data.withUnsafeBytes { raw in
             mach_vm_write(
                 task, mach_vm_address_t(address),
                 vm_offset_t(UInt(bitPattern: raw.baseAddress)), mach_msg_type_number_t(data.count))
         }
-        guard wrote == KERN_SUCCESS else { throw SpaceSwitchSpeedError.machFailure("write", wrote) }
-        _ = mach_vm_protect(
-            task, mach_vm_address_t(address), mach_vm_size_t(data.count), 0,
-            VM_PROT_READ | VM_PROT_EXECUTE)
+        guard kr == KERN_SUCCESS else { throw SpaceSwitchSpeedError.machFailure("write", kr) }
+    }
+
+    /// Rewrites instructions in `__TEXT`, which is mapped read-execute and shared
+    /// copy-on-write: `VM_PROT_COPY` forces a private copy so the write cannot
+    /// reach the file or any other process mapping the same page. Dock is not
+    /// suspended, so while the page is writable a thread executing there would
+    /// fault; the page is opened once for all the words rather than once per
+    /// word, and closed again whatever happens.
+    public func writeWords(_ words: [(address: UInt64, word: UInt32)]) throws {
+        guard let first = words.map(\.address).min(), let last = words.map(\.address).max() else { return }
+        let start = mach_vm_address_t(first)
+        let length = mach_vm_size_t(last + 4 - first)
+        func protect(_ protection: vm_prot_t) -> kern_return_t {
+            mach_vm_protect(task, start, length, 0, protection)
+        }
+        let opened = protect(VM_PROT_READ | VM_PROT_WRITE | VM_PROT_COPY)
+        guard opened == KERN_SUCCESS else { throw SpaceSwitchSpeedError.machFailure("protect", opened) }
+        var failure: Error?
+        for (address, word) in words {
+            do { try writeWord(address, word) } catch { failure = error; break }
+        }
+        let closed = protect(VM_PROT_READ | VM_PROT_EXECUTE)
+        if let failure { throw failure }
+        guard closed == KERN_SUCCESS else { throw SpaceSwitchSpeedError.machFailure("protect", closed) }
     }
 
     public func readDouble(_ address: UInt64) throws -> Double {
