@@ -102,14 +102,30 @@ WINDOW_WIDTH = 560
 CURSOR_REST = (30, 36)
 FADE = 0.06
 
+# The background falls off by around a dozen levels across the whole banner, so
+# in 8 bits its steps land hundreds of pixels apart and read as bands however
+# little the codec is allowed to throw away. A fixed field of noise a couple of
+# levels deep scatters each step instead. The field is the same in every frame,
+# which is what keeps it nearly free for an encoder that stores differences, and
+# it stops at the lit screen: photographic content has texture of its own there
+# and the noise would only cost bits.
+DITHER = 1.1
+DITHER_CLAMP = 2
+
 # The screen's spill onto the background. A CSS blur is rasterised at the
 # size it ends up on screen, so blurring the strip live costs more than the
-# rest of the frame put together; the desktops are blurred once at a fraction
-# of the size instead and the browser only has to scale them up.
-GLOW_SPREAD = 3.2
-GLOW_BLUR = 60
-GLOW_STEP = 6
-GLOW_OPACITY = 0.38
+# rest of the frame put together; the desktops are blurred once, up front, and
+# the browser is left with nothing to do but scale the result.
+#
+# The step is the grid that blur is sampled on, and the layer is magnified by
+# GLOW_SPREAD after it: sampled coarser than the screen, the interpolation
+# between samples facets under the magnification. The radius is what decides
+# whether the spill carries the desktop's colour or averages it — much past
+# this and every wallpaper blurs to the same grey haze.
+GLOW_SPREAD = 2.1
+GLOW_BLUR = 34
+GLOW_STEP = 1
+GLOW_OPACITY = 0.55
 GLOW_FALLOFF = "50%"
 
 # The shortcut and the gesture that do the switch, played as each swipe
@@ -609,7 +625,13 @@ def build_html():
 """
     HTML.write_text(html)
     print(f"{HTML.relative_to(ROOT)}: {total:.2f} s loop")
-    return total
+    screen = (
+        round(screen_x),
+        round(screen_y),
+        round(screen_x + screen_w),
+        round(screen_y + screen_h),
+    )
+    return total, screen
 
 
 # MARK: - Capture
@@ -730,11 +752,12 @@ class Chrome:
         raise SystemExit("the banner page did not finish loading")
 
     def frame(self, t):
-        # Encoding the frame as PNG costs Chrome more than drawing it does, and
-        # the frames are headed for a lossy codec anyway: JPEG at full quality
-        # halves the render and stays within a couple of levels of the pixels.
+        # Chrome's JPEG encoder subsamples the chroma at every quality, which
+        # costs over a hundred levels on the saturated edges in the album art
+        # and lays a second grid under the one the codec will add later, so the
+        # frames come back lossless and Chrome's encoding time is the price.
         self.evaluate(f"seek({t})")
-        data = self.call("Page.captureScreenshot", format="jpeg", quality=100)["data"]
+        data = self.call("Page.captureScreenshot", format="png")["data"]
         return Image.open(io.BytesIO(base64.b64decode(data))).convert("RGB")
 
     def close(self):
@@ -759,11 +782,32 @@ def capture(total):
     return frames
 
 
-def encode(frames):
+def dither(frames, screen):
+    channels = []
+    for _ in range(3):
+        # Independent per channel, so the chroma is scattered as well as the
+        # luma; one field shared by all three only moves the steps, it does not
+        # break them up.
+        noise = Image.effect_noise(SIZE, DITHER)
+        noise = noise.point(lambda v: min(128 + DITHER_CLAMP, max(128 - DITHER_CLAMP, v)))
+        noise.paste(128, screen)
+        channels.append(noise)
+    field = Image.merge("RGB", channels)
+    return [ImageChops.add(frame, field, 1.0, -128) for frame in frames]
+
+
+def encode(frames, screen):
+    frames = dither(frames, screen)
     size = (OUTPUT_WIDTH, round(SIZE[1] * OUTPUT_WIDTH / SIZE[0]))
     # The banner is opaque throughout, so RGB drops an alpha channel that would
     # otherwise cost a chunk in every frame. minimize_size lets the encoder spend
     # time finding the frame differences worth storing.
+    #
+    # The quality is the one the glow needs, not the one the desktops need. The
+    # spill is a shallow gradient over near-black, so it spans few levels and
+    # the quantiser steps across it read as blocks: it gains 3 dB between 90 and
+    # 91 and nothing at all above 91, while the desktops move by tenths the whole
+    # way. 91 is where that step falls, and the file is what it costs.
     if frames[0].size != size:
         frames = [f.resize(size, Image.LANCZOS) for f in frames]
     frames[0].save(
@@ -772,7 +816,7 @@ def encode(frames):
         append_images=frames[1:],
         duration=round(1000 / FPS),
         loop=0,
-        quality=78,
+        quality=91,
         method=4,
         minimize_size=True,
     )
@@ -790,4 +834,5 @@ if __name__ == "__main__":
         shots = " ".join(f"{name}.png" for name, _ in STATES)
         raise SystemExit(f"usage: make-banner.py [--html | --states {shots}]")
     else:
-        encode(capture(build_html()))
+        total, screen = build_html()
+        encode(capture(total), screen)
