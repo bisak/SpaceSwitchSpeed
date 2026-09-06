@@ -278,6 +278,26 @@ No. Those are window managers. This changes one animation.
 The SIP change makes attaching to Dock *possible*; root makes it *permitted*. Both
 checks are separate.
 
+## Alternatives
+
+| | Speed | Animation | Needs |
+|---|---|---|---|
+| [InstantSpaceSwitcher](https://github.com/jurplel/InstantSpaceSwitcher) | 5 presets | Immediate, or a shortened Dock slide | Accessibility |
+| [space-rabbit](https://github.com/Tahul/space-rabbit) | 5-step slider | Immediate, or a shortened Dock slide | Accessibility |
+| [Blink](https://github.com/benkoppe/Blink) | 5 presets, plus custom | Immediate, or a shortened Dock slide | Accessibility |
+| [FasterSwiper](https://github.com/mgbowen/FasterSwiper) | Duration and easing curve | Its own easing curve | Accessibility |
+| [strafe](https://github.com/rileycx/strafe) | 3 presets | Immediate, or an 80–110 ms ramp | Accessibility |
+| [instantspaces](https://github.com/flawnn/instantspaces) | Two build-time modes | Immediate, or a fixed 0.125 s slide | SIP relaxed, code injection |
+
+Most of these post a synthetic trackpad swipe, so they need only Accessibility. Dock
+finishes the switch itself, which is why the result is either immediate or Dock's own
+flick. FasterSwiper and strafe drive the slide themselves, so those two have a duration
+to set. instantspaces patches Dock instead, overwriting its transition duration.
+
+macOS 27 changed the event format. space-rabbit, FasterSwiper,
+[iss](https://github.com/joshuarli/iss) and [noswoosh](https://github.com/mmathys/noswoosh)
+have code for it; the rest do not. None of it is settled while 27 is in beta.
+
 ## Contributing
 
 Issues and pull requests are welcome, particularly reports from macOS versions or
