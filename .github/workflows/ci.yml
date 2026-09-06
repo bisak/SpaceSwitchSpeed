@@ -12,14 +12,14 @@ concurrency:
 jobs:
   build:
     name: Build and test
-    runs-on: macos-15
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
 
       - name: Show toolchain
         run: |
+          xcodebuild -version
           swift --version
-          make help
 
       # The same target developers run, so CI and local cannot drift.
       - name: Lint, test, build and verify

@@ -128,12 +128,13 @@ make run          # build the app and launch it
 make install      # install the command line tool and helper
 ```
 
-`make` selects a toolchain per task, because on a typical Mac no single one can
-do both jobs. An app is drawn with the controls of the SDK it was linked
-against, so it needs one at least as new as the running system — and that is
-often the Command Line Tools rather than Xcode. The test frameworks, meanwhile,
-ship only inside Xcode. `Scripts/toolchain.sh` works out which is which, and
-warns if the newest SDK available is still older than your system.
+Needs Xcode 26 or newer. macOS draws an app with the controls of the SDK it was
+linked against, so building with an older Xcode than your system produces a
+window that looks a release behind.
+
+The app is an Xcode target; `SpaceSwitchKit`, the command line tool and the
+tests are a Swift package the project depends on. That split is deliberate —
+Homebrew builds the tool with `swift build` and never needs Xcode.
 
 ## Usage
 

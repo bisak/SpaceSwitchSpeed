@@ -7,12 +7,10 @@ let package = Package(
     products: [
         .library(name: "SpaceSwitchKit", targets: ["SpaceSwitchKit"]),
         .executable(name: "spaceswitch", targets: ["spaceswitch"]),
-        .executable(name: "SpaceSwitchApp", targets: ["SpaceSwitchApp"]),
     ],
     targets: [
         .target(name: "SpaceSwitchKit", swiftSettings: .strict),
         .executableTarget(name: "spaceswitch", dependencies: ["SpaceSwitchKit"], swiftSettings: .strict),
-        .executableTarget(name: "SpaceSwitchApp", dependencies: ["SpaceSwitchKit"], swiftSettings: .strict),
         .testTarget(name: "SpaceSwitchKitTests", dependencies: ["SpaceSwitchKit"], swiftSettings: .strict),
     ]
 )
