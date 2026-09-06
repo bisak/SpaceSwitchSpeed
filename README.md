@@ -6,11 +6,11 @@
 
 **Make the macOS Space-switching animation as fast as you want.**
 
-The slide between desktops, the one you get from a three-finger swipe, `Control + →`
-or Mission Control, takes about a third of a second, and macOS has no setting to
-change it. The `defaults write` commands you will find online
-[stopped working years ago](#why-defaults-write-doesnt-fix-this). Space Switch Speed
-adds the slider Apple never shipped.
+The slide between desktops — the one you get from a three-finger swipe, `Control + →`,
+Mission Control, or moving in and out of a full-screen app — takes about a third of a
+second, and macOS has no setting to change it. The `defaults write` commands you will
+find online [stopped working years ago](#why-defaults-write-doesnt-fix-this). Space
+Switch Speed adds the slider Apple never shipped.
 
 [![Platform](https://img.shields.io/badge/platform-macOS%2015%2B-lightgrey)](#compatibility)
 [![Apple Silicon](https://img.shields.io/badge/arch-Apple%20Silicon-black)](#compatibility)
@@ -29,7 +29,7 @@ adds the slider Apple never shipped.
 ### App
 
 Download `SpaceSwitchSpeed-<version>.dmg` from the
-[Releases](https://github.com/bisak/spaceswitchspeed/releases) page, open it, and drag
+[Releases](https://github.com/bisak/SpaceSwitchSpeed/releases) page, open it, and drag
 Space Switch Speed into the Applications folder beside it. Then clear the download
 quarantine:
 
@@ -46,8 +46,8 @@ does not work: Apple removed that bypass in macOS 15.
 ### From source
 
 ```bash
-git clone https://github.com/bisak/spaceswitchspeed
-cd spaceswitchspeed
+git clone https://github.com/bisak/SpaceSwitchSpeed
+cd SpaceSwitchSpeed
 make              # list every target
 make run          # build the app and launch it
 make install      # build the app and put it in /Applications
@@ -207,6 +207,18 @@ replaces the slide with a cross-fade and also flattens window minimising, Launch
 Mission Control, notification transitions and app switching across the whole system.
 If you only want the Space switch to be quicker, it costs far too much.
 
+### Where people keep asking
+
+The question long predates this tool, and Apple's own forums are where it lands and
+stops:
+
+- [can I increase the speed of the switch spaces animation?](https://discussions.apple.com/thread/253938203)
+  — closed, with Reduce Motion marked as the answer, at the cost described above.
+- [Speed up desktop switching animation in macOS Tahoe](https://discussions.apple.com/thread/256195960)
+  — ten replies, closed, no setting found.
+- [Switching spaces animation is very slow on high refresh rate screens](https://discussions.apple.com/thread/256054548)
+  — open, unresolved, and filed with Apple as a bug.
+
 ## What Space Switch Speed does not do
 
 Worth being explicit, because "patches Dock" sounds alarming:
@@ -278,6 +290,12 @@ the animation from a fixed 60 Hz timestep to the display's real frame interval, 
 why 13 and 14 are not supported. Either way it fails safely: it refuses to patch rather
 than writing to an address it has not positively identified, and `killall Dock` undoes
 anything it has done.
+
+**Is this about "Spaces", "desktops" or "workspaces"?**
+All the same thing. Apple's documentation calls them Spaces, Mission Control labels them
+Desktop 1 and Desktop 2, and people arriving from Linux or Windows call them virtual
+desktops or workspaces. Full-screen apps are Spaces too, so the same slide plays when you
+move in and out of one, and the slider covers that as well.
 
 **Is this the same as yabai / Amethyst / Rectangle?**
 No. Those are window managers. Space Switch Speed changes one animation and nothing else. It

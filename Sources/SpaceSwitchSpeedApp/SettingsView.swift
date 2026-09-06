@@ -55,7 +55,7 @@ struct SettingsView: View {
 /// The window says nothing at all unless something needs the user's attention.
 private struct NoteView: View {
     static let sipHelp = URL(
-        string: "https://github.com/bisak/spaceswitchspeed#system-integrity-protection")!
+        string: "https://github.com/bisak/SpaceSwitchSpeed#system-integrity-protection")!
 
     let note: Controller.Note
     let openLoginItems: () -> Void

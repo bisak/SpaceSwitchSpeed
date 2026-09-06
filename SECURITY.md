@@ -2,7 +2,7 @@
 
 ## Reporting something
 
-Use GitHub's [private vulnerability reporting](https://github.com/bisak/spaceswitchspeed/security/advisories/new).
+Use GitHub's [private vulnerability reporting](https://github.com/bisak/SpaceSwitchSpeed/security/advisories/new).
 That is the channel I watch, and it keeps the report between us until there is a fix
 worth announcing.
 
