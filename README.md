@@ -18,83 +18,19 @@ Switch Speed adds the slider Apple never shipped.
 
 ## Requirements
 
-- An Apple Silicon Mac running macOS 15 Sequoia or later
-- **SIP's debugging restrictions turned off** — one command in Recovery, and the
-  only part of System Integrity Protection this needs. That is still a real tradeoff,
-  so read [what it means](#system-integrity-protection) before installing
-- An administrator account
+- An Apple Silicon Mac running macOS 15 Sequoia or later. Intel Macs are not supported.
+- An administrator account.
+- SIP's debugging restrictions turned off. That is step 1 below. It is a real security
+  tradeoff, so [read what it means](#system-integrity-protection) before you do it.
 
 ## Install
 
-### App
+### 1. Turn off SIP's debugging restrictions
 
-Download `SpaceSwitchSpeed-<version>.dmg` from the
-[Releases](https://github.com/bisak/SpaceSwitchSpeed/releases) page, open it, and drag
-Space Switch Speed into the Applications folder beside it. Then clear the download
-quarantine:
-
-```bash
-xattr -dr com.apple.quarantine "/Applications/Space Switch Speed.app"
-```
-
-The app is signed for local use but not notarised by Apple, which needs a paid
-Developer ID, so without that step macOS refuses to open it. If you would rather not
-run a command, launch the app once, let it be blocked, then click **Open Anyway** in
-**System Settings → Privacy & Security**. Control-clicking the app and choosing Open
-does not work: Apple removed that bypass in macOS 15.
-
-### From source
-
-```bash
-git clone https://github.com/bisak/SpaceSwitchSpeed
-cd SpaceSwitchSpeed
-make              # list every target
-make run          # build the app and launch it
-make install      # build the app and put it in /Applications
-```
-
-Needs Xcode 26 or newer, because macOS draws a window with the controls of the SDK it
-was linked against, and an older Xcode produces one that looks a release behind.
-
-## Usage
-
-One slider. Drag it, and the change takes effect.
-
-The first change asks for your password once, because writing to Dock needs root.
-Everything after that is silent, including putting the setting back whenever Dock
-restarts. After an update, the next change asks once more so the new version can
-replace its helper. Sliding all the way back to Default turns Space Switch Speed off
-entirely, and **Space Switch Speed → Remove Space Switch Speed…** takes it off the machine.
-
-The setting is shared by every account on the Mac and applies to every logged-in
-user's Dock, fast user switching included. From a standard account, each change asks
-for an administrator's name and password.
-
-That password installs a small background helper. macOS lists it under
-**System Settings → General → Login Items & Extensions**; switch it off there and Dock
-goes back to normal at once. This is everything it places on your Mac, and
-**Remove Space Switch Speed…** deletes all of it:
-
-- `/Library/LaunchDaemons/com.bisak.spaceswitchspeed.helper.plist`
-- `/Library/PrivilegedHelperTools/com.bisak.spaceswitchspeed.helper`
-- `/Library/Application Support/SpaceSwitchSpeed/`, which holds your setting
-
-## System Integrity Protection
-
-**This is a real security tradeoff. Read this section rather than skipping it.**
-
-Space Switch Speed works by writing to the memory of Dock, a running Apple process, and
-macOS forbids that for every process, root included, while System Integrity Protection
-is fully on. There is no entitlement, permission dialog or App Store-friendly way around
-it. Apple reserves that capability for its own tools.
-
-SIP is not one switch, though. It is a set of protections, described on Apple's page
-[About System Integrity Protection on your Mac](https://support.apple.com/en-us/102149),
-and only one of them stands in the way: **Debugging Restrictions**, which governs
-`task_for_pid` against Apple's own processes. You do not have to turn the rest off, and
-you should not.
-
-### Turn off only what it needs
+Space Switch Speed changes a running Apple process, and System Integrity Protection
+blocks that for everyone, root included. Only one part of SIP is in the way,
+**Debugging Restrictions**, and this turns off just that part. Everything else in SIP
+stays on. It needs a trip to Recovery, so do it before anything else.
 
 1. Shut the Mac down completely.
 2. Press and **hold** the power button until "Loading startup options" appears.
@@ -107,12 +43,85 @@ you should not.
    csrutil enable --without debug
    ```
 
-6. Confirm, then restart normally.
+6. Answer its prompts, then restart.
 
-`csrutil` warns that this is an unsupported configuration. That is expected: Apple does
-not bless partial configurations, and what `--without debug` covers could change in a
-future release. Afterwards `csrutil status` reports `unknown (Custom Configuration)` and
-lists each protection separately:
+`csrutil` warns that this is an unsupported configuration. That is expected. With
+FileVault on, Recovery asks you to unlock the disk first; FileVault stays on.
+
+To put it back later, make the same trip and run `csrutil clear`.
+
+### 2. Install the app
+
+Download `SpaceSwitchSpeed-<version>.dmg` from the
+[Releases](https://github.com/bisak/SpaceSwitchSpeed/releases) page, open it, and drag
+Space Switch Speed into the Applications folder beside it. Then clear the download
+quarantine:
+
+```bash
+xattr -dr com.apple.quarantine "/Applications/Space Switch Speed.app"
+```
+
+The app is signed but not notarised by Apple, which needs a paid Developer ID, so macOS
+refuses to open it until you do that. If you would rather not run a command, open the
+app, let it be blocked, then click **Open Anyway** in **System Settings → Privacy &
+Security**. Control-clicking the app and choosing Open no longer works on macOS 15.
+
+Or build it yourself, which needs Xcode 26 or newer and skips the quarantine step:
+
+```bash
+git clone https://github.com/bisak/SpaceSwitchSpeed
+cd SpaceSwitchSpeed
+make install
+```
+
+### 3. Set the speed
+
+Open Space Switch Speed and drag the slider. The first change asks for your password
+once. That is all.
+
+## Usage
+
+The slider has five stops: **Default**, **Gentle**, **Balanced**, **Quick** and
+**Instant**. Default is Apple's animation untouched, and each stop after it is a fixed
+fraction of that. A change takes effect as you release the slider. Sliding back to
+Default turns Space Switch Speed off entirely.
+
+Your password installs a small background helper that puts the setting back whenever
+Dock restarts, so the app does not need to stay open. After an update, the next change
+asks once more. The setting is shared by every account on the Mac; from a standard
+account, each change asks for an administrator's password.
+
+macOS lists the helper under **System Settings → General → Login Items & Extensions**.
+Switch it off there and Dock goes back to normal at once.
+
+## Uninstall
+
+**Space Switch Speed → Remove Space Switch Speed…** puts Dock back, removes everything
+it installed, and quits. Then move the app to the Trash.
+
+Or just delete the app. The helper notices within a few minutes, puts Dock back and
+removes itself. `killall Dock` undoes the patch immediately, at any time.
+
+This is everything it puts on your Mac:
+
+- `/Library/LaunchDaemons/com.bisak.spaceswitchspeed.helper.plist`
+- `/Library/PrivilegedHelperTools/com.bisak.spaceswitchspeed.helper`
+- `/Library/Application Support/SpaceSwitchSpeed/`, which holds your setting
+
+## System Integrity Protection
+
+**This is a real security tradeoff.** The steps are in [Install](#install); this is
+what they mean.
+
+Space Switch Speed works by writing to the memory of Dock, a running Apple process.
+With SIP fully on, macOS forbids that for every process, root included, and no
+permission dialog or entitlement allows it.
+
+SIP is a set of protections rather than one switch, described on Apple's page
+[About System Integrity Protection](https://support.apple.com/en-us/102149). Only
+**Debugging Restrictions** stands in the way, and `csrutil enable --without debug`
+turns off that one alone. Afterwards `csrutil status` reports
+`unknown (Custom Configuration)` and lists each protection separately:
 
 | Protection | `csrutil disable` | `--without debug` |
 |---|---|---|
@@ -123,65 +132,39 @@ lists each protection separately:
 | BaseSystem Verification | off | **on** |
 | Debugging Restrictions | off | off |
 
-Filesystem Protections is the one worth keeping. With it on, root still cannot write to
-`/System`, `/bin`, `/sbin`, `/usr` outside `/usr/local`, or Apple's app bundles, which is
-how something that has got root would otherwise make itself permanent. What you give up
-is narrower: anything already running as root can attach to any Apple process and read or
-write its memory. That is a genuine loss of defence-in-depth, and it is exactly the
-capability Space Switch Speed uses.
+**What you keep.** Filesystem Protections: root still cannot write to `/System`, `/bin`,
+`/sbin`, most of `/usr`, or Apple's app bundles, which is how something that has got root
+would otherwise make itself permanent. Gatekeeper, notarisation, sandboxing, TCC,
+FileVault and the sealed system volume are unaffected too.
 
-A full `csrutil disable` also works, and is what most guides tell you to run. It gives up
-every row of that table for no additional benefit here.
+**What you give up.** Anything already running as root can attach to any Apple process
+and read or write its memory. That is a genuine loss of defence-in-depth, and it is
+exactly the capability Space Switch Speed uses. On Apple Silicon, any `csrutil` change
+also lowers the boot policy to Permissive Security; the partial configuration keeps the
+protections in the table but does not restore Full Security.
 
-### What it does not buy back
+A full `csrutil disable`, which is what most guides tell you to run, also works. It gives
+up every row of that table for no benefit here.
 
-On Apple Silicon, SIP lives in the boot policy, and `csrutil` only ever lowers that
-policy to **Permissive Security** — the same level a full `csrutil disable` sets. A
-partial configuration restores the kernel-enforced protections above; it does not restore
-Full Security. Gatekeeper, notarisation, sandboxing, TCC, FileVault and the sealed system
-volume are unaffected either way.
+**Whether the trade is acceptable is your call.** A shared Mac, a work laptop under an
+MDM policy, or anything holding credentials you cannot rotate: leave SIP alone and don't
+use this tool. A personal Mac where you already run unsigned software: the added risk is
+small, and tools such as yabai ask for the same thing.
 
-Whether the trade is acceptable is your call. A shared Mac, a work laptop under an MDM
-policy, or anything holding credentials you cannot rotate: leave SIP alone and don't use
-this tool. A personal Mac where you already run unsigned binaries: the marginal risk is
-small, and tools such as yabai's scripting addition ask for the same thing.
-
-**Space Switch Speed will never change your SIP configuration for you.** It detects the
-state, says so, and stops. Turning anything off is a deliberate act performed from
-Recovery, by you.
-
-### How to undo it
-
-The same trip to Recovery, then:
-
-```bash
-csrutil clear
-```
-
-which drops the custom configuration and restores the default on the next boot. It is
-completely reversible, and nothing Space Switch Speed does needs undoing first: the patch
-only ever existed in memory.
-
-> With FileVault on, Recovery asks you to unlock the disk first. That is expected, and
-> FileVault stays on.
+Space Switch Speed never changes your SIP configuration. It detects the state, says so,
+and stops. Turning anything off is a deliberate act performed by you, from Recovery, and
+`csrutil clear` reverses it completely.
 
 ## How it works
 
-Dock does not play a timed animation when you switch Space. It runs a spring: every
-frame it moves the desktop a little closer to where it is going, and the animation ends
-when the spring has settled, not when a clock runs out. Two constants in Dock's code set
-how stiff that spring is, and they are what make the switch take a third of a second.
+Dock does not play a timed animation when you switch Space. It runs a spring, and the
+switch ends when the spring has settled. Two constants in Dock set how stiff that spring
+is.
 
-Space Switch Speed changes those two constants in the running Dock process. It rewrites
-five instructions so that the constants are read from a page it controls, then solves
-for the pair that produces the speed you asked for. Nothing is written to disk, and the
-change disappears the moment Dock restarts, which is why a small helper puts it back.
-
-The slider scales how long the spring takes. `1.00` writes back Apple's own constants
-exactly, and `0.50` really is half. Refresh rate makes no difference to that, so there
-is nothing to calibrate. There is no second control for damping, because every value
-that differs enough from Apple's to notice overshoots, and a desktop that slides past
-and springs back reads as a glitch rather than a flourish.
+Space Switch Speed changes those two constants in the running Dock process, solving for
+the pair that gives the speed you asked for. Nothing is written to disk, and the change
+disappears when Dock restarts, which is why the helper puts it back. Default writes
+Apple's own constants back exactly, and Balanced really is half the time.
 
 The disassembly, the constants, the patch and why it is safe are written up in
 [docs/REVERSE-ENGINEERING.md](docs/REVERSE-ENGINEERING.md).
@@ -196,66 +179,54 @@ defaults write com.apple.dock workspaces-swoosh-animation-off -bool true
 defaults write com.apple.dock expose-animation-duration -float 0.1
 ```
 
-Neither does anything on any current macOS. `workspaces-swoosh-animation-off` was real
-in Mac OS X Lion and was removed over a decade ago. `expose-animation-duration` only
-ever affected Mission Control's zoom, never the Space slide. Neither string exists in
-the Dock binary any more; both answers have simply been copied forward. There is no
-preference to set because there is no duration: the animation is a spring, as above.
+Neither does anything on any current macOS. The first was real in Mac OS X Lion and was
+removed over a decade ago. The second only ever affected Mission Control's zoom, never
+the Space slide. Neither string exists in the Dock binary any more. There is no
+preference to set because there is no duration: the animation is a spring.
 
-**Reduce Motion** (System Settings → Accessibility → Display) does work, but it
-replaces the slide with a cross-fade and also flattens window minimising, Launchpad,
-Mission Control, notification transitions and app switching across the whole system.
-If you only want the Space switch to be quicker, it costs far too much.
+**Reduce Motion** (System Settings → Accessibility → Display) does work, but it replaces
+the slide with a cross-fade and flattens every other animation on the system with it.
 
 ### Where people keep asking
 
-The question long predates this tool, and Apple's own forums are where it lands and
-stops:
-
 - [can I increase the speed of the switch spaces animation?](https://discussions.apple.com/thread/253938203)
-  — closed, with Reduce Motion marked as the answer, at the cost described above.
+  — closed, with Reduce Motion marked as the answer.
 - [Speed up desktop switching animation in macOS Tahoe](https://discussions.apple.com/thread/256195960)
-  — ten replies, closed, no setting found.
+  — closed, no setting found.
 - [Switching spaces animation is very slow on high refresh rate screens](https://discussions.apple.com/thread/256054548)
-  — open, unresolved, and filed with Apple as a bug.
+  — open, and filed with Apple as a bug.
 
-## What Space Switch Speed does not do
+## What it does not do
 
-Worth being explicit, because "patches Dock" sounds alarming:
-
-- **It does not modify any file on disk.** Not Dock, not the system volume, nothing.
-  The Dock binary is byte-identical before and after.
-- **It does not persist in Dock.** The change lives in one process's memory. `killall Dock`
-  removes it completely and unconditionally, and that is the escape hatch if anything
-  ever looks wrong.
-- **It does not change your SIP configuration, run a curl-to-bash installer, or phone home.**
-- **It does not write to anything it has not identified.** The instructions it changes
-  are found by matching the shape of the code, not by hardcoded addresses, and it checks
-  that Apple's exact constants are present before touching anything. On a macOS build it
-  doesn't recognise, it does nothing and says so.
-- **It changes one animation.** Mission Control, Launchpad, window minimising and app
-  switching are untouched.
+- **Modify any file on disk.** The Dock binary is byte-identical before and after.
+- **Persist in Dock.** The change lives in one process's memory. `killall Dock` removes
+  it completely, and that is the escape hatch if anything ever looks wrong.
+- **Change your SIP configuration, run a curl-to-bash installer, or phone home.**
+- **Write to anything it has not identified.** It finds the code by its shape, not by
+  hardcoded addresses, and checks that Apple's exact constants are present before
+  touching anything. On a macOS build it doesn't recognise, it does nothing and says so.
+- **Touch any other animation.** Mission Control, Launchpad, window minimising and app
+  switching are unchanged.
 
 ## Compatibility
 
 | | |
 |---|---|
-| Architecture | Apple Silicon (arm64e) only. Intel Macs are not supported. |
-| macOS | Verified against the Dock of every release listed [below](#which-versions-are-verified). macOS 15 Sequoia is the floor: 13 and 14 drive the animation from a fixed 60 Hz timestep rather than the display's, and Space Switch Speed refuses to patch them. |
-| Displays | Nothing to configure, on any refresh rate or number of monitors. A speed setting takes the same wall-clock time on 60, 120 and 144 Hz, which is [not true of Apple's default](#faq). |
-| SIP | Debugging restrictions off (`csrutil enable --without debug`) is all it needs; a full `csrutil disable` also works. Nothing else in SIP matters to it. |
+| Architecture | Apple Silicon only. |
+| macOS | 15 Sequoia or later. 13 and 14 drive the animation from a fixed 60 Hz timestep rather than the display's, and are refused. |
+| Displays | Any refresh rate, any number of monitors, nothing to configure. A stop takes the same time on 60, 120 and 144 Hz, [unlike Apple's default](#faq). |
+| SIP | Debugging restrictions off is all it needs. A full `csrutil disable` also works. |
 
 ### Which versions are verified
 
-Each of these was checked by running the locator against the Dock binary from Apple's
-restore image for that build, without patching anything. `make check-dock` does the same
-for the Dock on your own Mac, and `make fetch-dock MACOS=15.0` gets any other release's:
+Each Dock below was checked against the binary from Apple's restore image for that
+build. `make check-dock` does the same for the Dock on your own Mac.
 
 | macOS | Dock | |
 |---|---|---|
-| 13.0 (22A380) | 2206 | refuses — fixed 60 Hz timestep |
-| 14.0 (23A344) | 2273.1.100 | refuses — fixed 60 Hz timestep |
-| 14.6.1 (23G93) | 2273.105 | refuses — fixed 60 Hz timestep |
+| 13.0 (22A380) | 2206 | refused |
+| 14.0 (23A344) | 2273.1.100 | refused |
+| 14.6.1 (23G93) | 2273.105 | refused |
 | 15.0 (24A335) | 2341.0.1 | works |
 | 15.6.1 (24G90) | 2341.6.1 | works |
 | 26.0 (25A354) | 2427.0.4 | works |
@@ -263,79 +234,47 @@ for the Dock on your own Mac, and `make fetch-dock MACOS=15.0` gets any other re
 | 26.4 (25E246) | 2427.4.7 | works |
 | 26.6.2 (25G83) | 2427.6 | works |
 
-## Uninstall
-
-**Space Switch Speed → Remove Space Switch Speed…** puts Dock back, removes the helper and
-everything it wrote, and quits, leaving only the app for you to move to the Trash.
-
-Or just delete the app. The helper notices within a few minutes, puts Dock back and
-removes itself, leaving nothing on the system volume. Moving or renaming the app is
-fine; only the Trash counts. `killall Dock` undoes the patch immediately, at any time.
-
 ## FAQ
 
-**Does this work on Intel Macs?**
-No. The patch is arm64e machine code. Intel support would need a separate implementation.
-
 **Will a macOS update break it?**
-It may, and the honest answer is that recompiling Dock is enough to do it. The animation
-is located by the data flow of its integrator, not by address and not by one fixed
-sequence of instructions, because measuring real builds showed the compiler reorders
-that sequence freely: between macOS 26.2 and 26.4 the operands of one commutative
-multiply swapped, which was enough to defeat an earlier, stricter signature. Matching the
-data flow instead absorbs that, and every release in the table above is checked.
-
-A genuine rewrite still defeats it, and one has already happened once — macOS 15 moved
-the animation from a fixed 60 Hz timestep to the display's real frame interval, which is
-why 13 and 14 are not supported. Either way it fails safely: it refuses to patch rather
-than writing to an address it has not positively identified, and `killall Dock` undoes
-anything it has done.
+It may. The animation is found by the shape of its code rather than by address, which
+has held across every release in the table above, but a real rewrite of Dock would
+defeat it. When that happens it refuses to patch rather than guessing, and
+`killall Dock` undoes anything it has done.
 
 **Is the animation slower on a 120 Hz or ProMotion display?**
-Yes, and it is not your imagination. Dock's spring uses per-frame coefficients with a
-timestep that macOS 15 takes from the display, so the same constants describe a
-different system at every refresh rate. Measured from Apple's own values, the switch
-settles in about 0.092 s at 60 Hz and 0.124 s at 120 Hz — a 60 Hz Mac's Space switch is
-genuinely faster, and slightly bouncier, than a ProMotion one. There is no setting for
-this and reporting it to Apple has not moved it. Space Switch Speed solves the spring
-for whatever your display reports, so a given speed takes the same wall-clock time on
-any of them. The [measurements are in the write-up](docs/REVERSE-ENGINEERING.md).
+Yes. Dock's spring runs per frame, so the same constants animate about a third slower
+on a 120 Hz display than on a 60 Hz one, and Apple has not changed that. Space Switch
+Speed solves the spring for your display, so each stop takes the same time at any
+refresh rate. The measurements are in [the write-up](docs/REVERSE-ENGINEERING.md).
 
 **Is this about "Spaces", "desktops" or "workspaces"?**
-All the same thing. Apple's documentation calls them Spaces, Mission Control labels them
-Desktop 1 and Desktop 2, and people arriving from Linux or Windows call them virtual
-desktops or workspaces. Full-screen apps are Spaces too, so the same slide plays when you
-move in and out of one, and the slider covers that as well.
+All the same thing. Full-screen apps are Spaces too, so the slider covers moving in and
+out of those as well.
 
-**Is this the same as yabai / Amethyst / Rectangle?**
-No. Those are window managers. Space Switch Speed changes one animation and nothing else. It
-does not require yabai's scripting addition, though both need SIP's debugging
-restrictions off for related reasons.
+**Can I remove the animation entirely?**
+**Instant** finishes in under 70 ms, which reads as a cut. Anything faster fights the
+trackpad's gesture tracking. For no animation at all, use Reduce Motion.
 
-**Can I make it truly instant, with no animation at all?**
-`0.20` arrives in under 70 ms, which reads as instant in practice. Going lower makes the
-spring stiff enough to look like a hard cut, and on a trackpad swipe that fights the
-gesture tracking. If you want no animation whatsoever, Reduce Motion is the honest
-answer.
+**Does it slow down my Mac or use battery?**
+No. It changes two numbers Dock already reads every frame. Nothing is polled and no
+code is injected.
 
-**Do I need to keep the app running?**
-No. The app is just the settings window. The helper is a small background process that
-only wakes when a Dock starts or stops, a user logs in or out, or the setting changes.
-
-**Does it slow down my Mac or drain battery?**
-No. It changes two floating-point constants Dock already reads every frame. There is no
-polling, no injected code path and no additional work per frame.
+**Is this the same as yabai, Amethyst or Rectangle?**
+No. Those are window managers. This changes one animation.
 
 **Why does it need root as well as the SIP change?**
-Debugging restrictions off makes `task_for_pid` on a platform binary *possible*; root
-makes it *permitted*. Both checks are separate and both must pass.
+The SIP change makes attaching to Dock *possible*; root makes it *permitted*. Both
+checks are separate.
 
 ## Contributing
 
 Issues and pull requests are welcome, particularly reports from macOS versions or
-hardware I cannot test on. If Space Switch Speed refuses to find the integrator on your
-machine, please open an issue with your macOS version, build number and Mac model,
-and what the helper said about it:
+hardware I cannot test on. `make` lists every target, and `make ci` runs the same checks
+a release does.
+
+If Space Switch Speed refuses to patch your Dock, open an issue with your macOS version,
+build number and Mac model, and what the helper said:
 
 ```bash
 log show --last 1h --predicate 'subsystem == "com.bisak.spaceswitchspeed"'
