@@ -8,9 +8,7 @@ public struct Status {
     public let applied: Bool
     public let gain: Double
     public let retention: Double
-    public let refreshHz: Double
     public let speed: Double
-    public let damping: Double
     public let response: SpringModel.Response
     public let stockResponse: SpringModel.Response
     public let dockPID: pid_t
@@ -25,13 +23,11 @@ public final class Engine {
     private let image: MachOImage
     public let model: SpringModel
 
-    public init(refreshHz: Double? = nil) throws {
+    public init() throws {
         target = try DockTarget()
         image = try MachOImage(target: target)
-        model = SpringModel(dt: 1.0 / (refreshHz ?? SpringModel.referenceRefresh))
+        model = SpringModel()
     }
-
-    public var refreshHz: Double { 1.0 / model.dt }
 
     // MARK: - Inspection
 
@@ -51,13 +47,11 @@ public final class Engine {
             gain = try target.readDouble(page + 8)
         }
 
-        let (zeta, tau) = model.characterise(gain: gain, retention: retention)
+        let (_, tau) = model.characterise(gain: gain, retention: retention)
         return Status(
             applied: sites.state == .patched,
             gain: gain, retention: retention,
-            refreshHz: refreshHz,
             speed: tau / model.stockTimeConstant,
-            damping: zeta,
             response: model.simulate(gain: gain, retention: retention),
             stockResponse: model.simulate(gain: SpringModel.stockGain, retention: SpringModel.stockRetention),
             dockPID: target.pid
@@ -67,9 +61,9 @@ public final class Engine {
     // MARK: - Apply
 
     @discardableResult
-    public func apply(speed: Double, damping: Double? = nil) throws -> Status {
+    public func apply(speed: Double) throws -> Status {
         let sites = try PatchLocator.locate(target: target, image: image)
-        let (gain, retention) = model.coefficients(speed: speed, damping: damping)
+        let (gain, retention) = model.coefficients(speed: speed)
 
         switch sites.state {
         case .patched:

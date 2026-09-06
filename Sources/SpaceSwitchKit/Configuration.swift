@@ -12,16 +12,12 @@ import Foundation
 public struct Configuration: Codable, Equatable, Sendable {
     public var enabled: Bool
     public var speed: Double
-    /// Overrides the damping ratio derived from `speed`. Nil means "follow the
-    /// single-knob rule", which is what the app exposes by default.
-    public var damping: Double?
 
     public init(
         enabled: Bool = true, speed: Double = 0.5, damping: Double? = nil
     ) {
         self.enabled = enabled
         self.speed = speed.clamped(to: Speed.range)
-        self.damping = damping
     }
 
     public static let directory = URL(

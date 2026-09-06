@@ -111,62 +111,15 @@ public struct SpringModel: Sendable {
 
     // MARK: - The single knob
 
-    /// Damping ratio giving a peak overshoot, from the standard second-order
-    /// relation `exp(-pi z / sqrt(1 - z^2))`.
+    /// Coefficients for a speed setting.
     ///
-    /// A damping slider is unusable directly: every value above 1 looks
-    /// identical because nothing overshoots, so more than half its travel does
-    /// nothing. Overshoot is what the eye actually sees, so the control is
-    /// linear in that and converted here.
-    public static func damping(forOvershoot overshoot: Double) -> Double? {
-        guard overshoot > 0.001 else { return nil }
-        let logged = Foundation.log(overshoot)
-        return -logged / (Double.pi * Double.pi + logged * logged).squareRoot()
-    }
-
-    /// Coefficients whose arrival matches `arrival` at the given damping.
-    ///
-    /// Arrival is monotonic in the time constant, so a bisection finds it. This
-    /// exists because holding the *time constant* fixed while varying damping
-    /// does not hold the pace fixed — it is slowest at critical damping and
-    /// quickens either side — which made the damping control double as a second
-    /// speed control.
-    public func coefficients(arrival target: Double, damping zeta: Double) -> (
-        gain: Double, retention: Double
-    ) {
-        var slowest = 2.0
-        var fastest = 0.0005
-        for _ in 0..<48 {
-            let middle = (fastest + slowest) / 2
-            let candidate = coefficients(timeConstant: middle, damping: zeta)
-            if simulate(gain: candidate.gain, retention: candidate.retention).arrival < target {
-                fastest = middle
-            } else {
-                slowest = middle
-            }
-        }
-        return coefficients(timeConstant: (fastest + slowest) / 2, damping: zeta)
-    }
-
-    /// Coefficients for a speed setting, optionally overriding damping.
-    ///
-    /// Damping stays at whatever the display makes it, so speed 1.0 reproduces
-    /// stock exactly. Varying it with speed was measured and earned nothing:
-    /// at most a frame of arrival and a tenth of a percent of overshoot, at
-    /// both 60 and 120 Hz.
-    ///
-    /// Speed alone decides the pace. A chosen damping changes only how the
-    /// motion arrives, never when, so the two stay independent.
-    public func coefficients(speed: Double, damping override: Double? = nil) -> (
-        gain: Double, retention: Double
-    ) {
-        let s = speed.clamped(to: Speed.range)
-        let automatic = coefficients(
-            timeConstant: stockTimeConstant * s, damping: stockDamping)
-        guard let zeta = override else { return automatic }
-
-        let pace = simulate(gain: automatic.gain, retention: automatic.retention).arrival
-        return coefficients(arrival: pace, damping: zeta)
+    /// Damping stays at whatever Apple's constants imply, so speed 1.0
+    /// reproduces them exactly. Varying it with speed was measured and earned
+    /// nothing: at most a frame of arrival and a tenth of a percent of
+    /// overshoot, at 60 Hz and 120 Hz alike.
+    public func coefficients(speed: Double) -> (gain: Double, retention: Double) {
+        let speed = speed.clamped(to: Speed.range)
+        return coefficients(timeConstant: stockTimeConstant * speed, damping: stockDamping)
     }
 
     // MARK: - Prediction

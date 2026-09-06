@@ -56,5 +56,5 @@ clean: ## Remove build products
 
 ci: lint test app ## Everything CI runs
 	@codesign --verify --deep --strict $(APP)
-	@$(APP)/Contents/Helpers/spaceswitch presets --refresh 120 >/dev/null
+	@$(APP)/Contents/Helpers/spaceswitch presets >/dev/null
 	@echo "ok"

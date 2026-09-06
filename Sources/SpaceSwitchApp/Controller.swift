@@ -21,10 +21,6 @@ final class Controller: ObservableObject {
     @Published private(set) var busy = false
     @Published var confirmingRemoval = false
 
-    /// Damping is a secondary control, hidden behind Options. Nil means it
-    /// follows the speed automatically, which is what almost everyone wants.
-    @Published private(set) var damping: Double?
-
     enum Note: Equatable {
         case needsSIPDisabled
         case failed(String)
@@ -39,7 +35,6 @@ final class Controller: ObservableObject {
         let position = Double(config.enabled ? index : 0)
         stop = position
         committed = position
-        damping = config.damping
 
         if !SystemIntegrityProtection.isDisabled { note = .needsSIPDisabled }
 
@@ -59,7 +54,7 @@ final class Controller: ObservableObject {
 
     func commit() {
         guard note != .needsSIPDisabled, stop != committed else { return }
-        apply(stop: stop, damping: damping)
+        apply(stop: stop)
     }
 
     /// Takes SpaceSwitch off the machine: Dock back to stock, the helper and
@@ -75,12 +70,11 @@ final class Controller: ObservableObject {
         }
     }
 
-    private func apply(stop: Double, damping: Double?) {
+    private func apply(stop: Double) {
         let preset = Speed.presets[Int(stop)]
         var config = Configuration.load()
         config.speed = preset.value
         config.enabled = preset.value < Speed.stock
-        config.damping = damping
 
         // With a helper running, saving is the whole job: it notices the change
         // and applies it within half a second.

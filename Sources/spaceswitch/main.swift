@@ -10,87 +10,60 @@ let usage = """
     SpaceSwitch — speed control for the macOS Space-switch animation
 
     USAGE
-      spaceswitch [<speed>] [options]
-      spaceswitch status | revert | presets | install | uninstall
+      spaceswitch <speed>
+      spaceswitch status | presets | revert | install | uninstall
 
     ARGUMENTS
-      <speed>              0.2 – 1.0, a multiplier on the stock pace. 1.0 is
-                           exactly what macOS ships; lower is faster.
-                           Accepts a preset name as well: \(Speed.presets.map { $0.name.lowercased() }.joined(separator: ", "))
-
-    OPTIONS
-      --damping <ratio>    Override the damping ratio. Below 1.0 overshoots and
-                           bounces; 1.0 is critical; above 1.0 eases in.
-                           Defaults to the ratio Apple's own constants imply.
-      --refresh <hz>       Report predicted times for this refresh rate.
-      --dry-run            Print what would change without touching Dock.
-      --keep               With `uninstall`, leave the running Dock as it is.
-      --json               Machine-readable output.
-      --help               This text.
+      <speed>       0.2 – 1.0, a multiplier on the stock pace. 1.0 is exactly
+                    what macOS ships; lower is faster. Takes a preset name too:
+                    \(Speed.presets.map { $0.name.lowercased() }.joined(separator: ", "))
 
     COMMANDS
-      status               Show the saved settings and what the helper reports,
-                           and with sudo, what Dock is actually running.
-      revert               Restore Apple's constants. `killall Dock` also works.
-      presets              List the presets and their predicted timings.
-      install              Install the helper so the setting survives restarts.
-      uninstall            Remove the helper and revert.
+      status        Show the saved setting, and with sudo what Dock is running.
+      presets       List the presets and how long each takes.
+      revert        Restore Apple's constants. `killall Dock` also works.
+      install       Install the helper, so the setting survives restarts.
+      uninstall     Remove the helper and everything it wrote, and revert.
 
-    Writing to Dock needs System Integrity Protection disabled and root privileges.
-    See the README for what that means and how to weigh it.
+    Writing to Dock needs System Integrity Protection disabled and root
+    privileges. See the README for what that means and how to weigh it.
     """
 
-// MARK: - Argument parsing
-
-var speedArg: Double?
-var dampingArg: Double?
-var refreshArg: Double?
-var command = "apply"
-var json = false
-var dryRun = false
-var keepCurrent = false
-var ownerPath: String?
+// MARK: - Arguments
 
 func fail(_ message: String) -> Never {
     FileHandle.standardError.write(Data("spaceswitch: \(message)\n".utf8))
     exit(1)
 }
 
-func preset(named name: String) -> Double? {
-    Speed.presets.first { $0.name.lowercased() == name.lowercased() }?.value
-}
+var speedArg: Double?
+var ownerPath: String?
+var command = "apply"
 
-var args = Array(CommandLine.arguments.dropFirst())
+var arguments = Array(CommandLine.arguments.dropFirst())
 var index = 0
-while index < args.count {
-    let arg = args[index]
-    switch arg {
-    case "--help", "-h": print(usage); exit(0)
-    case "--json": json = true
-    case "--dry-run": dryRun = true
-    case "--keep": keepCurrent = true
+while index < arguments.count {
+    let argument = arguments[index]
+    switch argument {
+    case "--help", "-h":
+        print(usage)
+        exit(0)
+    case "status", "presets", "revert", "install", "uninstall", "daemon":
+        command = argument
+    // Recorded by `install` so the helper can tell when its app has gone.
     case "--owner":
         index += 1
-        guard index < args.count else { fail("--owner needs a path") }
-        ownerPath = args[index]
-    case "--damping":
-        index += 1
-        guard index < args.count, let v = Double(args[index]) else { fail("--damping needs a number") }
-        dampingArg = v
-    case "--refresh":
-        index += 1
-        guard index < args.count, let v = Double(args[index]), v > 0 else {
-            fail("--refresh needs a positive number")
-        }
-        refreshArg = v
-    case "status", "revert", "presets", "install", "uninstall", "daemon": command = arg
+        guard index < arguments.count else { fail("--owner needs a path") }
+        ownerPath = arguments[index]
     default:
-        if let v = Double(arg) {
-            speedArg = v
-        } else if let v = preset(named: arg) {
-            speedArg = v
+        if let value = Double(argument) {
+            speedArg = value
+        } else if let value = Speed.presets.first(where: {
+            $0.name.lowercased() == argument.lowercased()
+        })?.value {
+            speedArg = value
         } else {
-            fail("unrecognised argument '\(arg)'. Try --help.")
+            fail("unrecognised argument '\(argument)'. Try --help.")
         }
     }
     index += 1
@@ -98,100 +71,64 @@ while index < args.count {
 
 // MARK: - Reporting
 
-func format(_ status: Status) -> String {
-    let r = status.response, s = status.stockResponse
-    let ratio = r.arrival / s.arrival
-    var lines = [String]()
-    lines.append(
-        status.applied
+func describe(_ status: Status) -> String {
+    let response = status.response, stock = status.stockResponse
+    return """
+        \(status.applied
             ? "SpaceSwitch is active on Dock (pid \(status.dockPID))."
             : "Dock is running Apple's stock animation (pid \(status.dockPID)).")
-    lines.append("")
-    lines.append(
-        String(
-            format: "  display        %.0f Hz  (frame interval %.4f s)", status.refreshHz,
-            1 / status.refreshHz))
-    lines.append(String(format: "  speed          %.2f  of stock", status.speed))
-    lines.append(
-        String(
-            format: "  damping        %.3f  (%@)", status.damping,
-            status.damping > 1.001 ? "eases in" : status.damping < 0.999 ? "overshoots" : "critical"))
-    lines.append("")
-    lines.append(
-        String(
-            format: "  arrives in     %.0f ms   (stock %.0f ms, %.2fx)", r.arrival * 1000, s.arrival * 1000,
-            ratio))
-    lines.append(
-        String(format: "  settles in     %.0f ms   (stock %.0f ms)", r.settle * 1000, s.settle * 1000))
-    lines.append(String(format: "  overshoot      %.1f%%", r.overshoot * 100))
-    lines.append("")
-    lines.append(String(format: "  gain %.6f   retention %.6f", status.gain, status.retention))
-    return lines.joined(separator: "\n")
-}
 
-func emit(_ status: Status, json: Bool) {
-    if json {
-        let payload: [String: Any] = [
-            "applied": status.applied, "speed": status.speed, "damping": status.damping,
-            "gain": status.gain, "retention": status.retention, "refreshHz": status.refreshHz,
-            "arrivalMs": status.response.arrival * 1000, "settleMs": status.response.settle * 1000,
-            "overshoot": status.response.overshoot, "stockArrivalMs": status.stockResponse.arrival * 1000,
-            "dockPID": Int(status.dockPID),
-        ]
-        let data = try! JSONSerialization.data(
-            withJSONObject: payload, options: [.prettyPrinted, .sortedKeys])
-        print(String(decoding: data, as: UTF8.self))
-    } else {
-        print(format(status))
-    }
+          speed        \(String(format: "%.2f", status.speed)) of stock
+          arrives in   \(String(format: "%.0f ms", response.arrival * 1000)) \
+        (stock \(String(format: "%.0f ms", stock.arrival * 1000)))
+          settles in   \(String(format: "%.0f ms", response.settle * 1000))
+          gain \(String(format: "%.6f", status.gain))  \
+        retention \(String(format: "%.6f", status.retention))
+        """
 }
 
 // MARK: - Commands
 
 do {
     switch command {
-    case "presets":
-        let model = SpringModel(dt: 1 / (refreshArg ?? SpringModel.referenceRefresh))
-        let stock = model.simulate(gain: SpringModel.stockGain, retention: SpringModel.stockRetention)
-        print(String(format: "Predicted for a %.0f Hz display:\n", 1 / model.dt))
-        print("  preset      speed   damping   arrives   settles   vs stock")
-        for p in Speed.presets {
-            let (g, a) = model.coefficients(speed: p.value)
-            let r = model.simulate(gain: g, retention: a)
-            print(
-                String(
-                    format: "  %-10s  %.2f    %.3f     %4.0f ms   %4.0f ms   %.2fx",
-                    (p.name as NSString).utf8String!, p.value, model.stockDamping,
-                    r.arrival * 1000, r.settle * 1000, r.arrival / stock.arrival))
-        }
-
     case "daemon":
         Daemon(owner: ownerPath.map { URL(fileURLWithPath: $0) }).run()
+
+    case "presets":
+        let model = SpringModel()
+        let stock = model.simulate(gain: SpringModel.stockGain, retention: SpringModel.stockRetention)
+        print("  preset      speed   arrives   settles   vs stock")
+        for preset in Speed.presets {
+            let (gain, retention) = model.coefficients(speed: preset.value)
+            let response = model.simulate(gain: gain, retention: retention)
+            // %-10@ does not pad in Foundation; pad the string itself.
+            print(
+                String(
+                    format: "  %@  %.2f   %4.0f ms   %4.0f ms   %.2fx",
+                    preset.name.padding(toLength: 9, withPad: " ", startingAt: 0), preset.value,
+                    response.arrival * 1000, response.settle * 1000,
+                    response.arrival / stock.arrival))
+        }
 
     case "status":
         let saved = Configuration.load()
         print("settings   \(Configuration.url.path)")
         print("  speed    \(String(format: "%.2f", saved.speed))\(saved.enabled ? "" : "  (off)")")
-        print("  damping  \(saved.damping.map { String(format: "%.3f", $0) } ?? "automatic")")
         print("  restarts \(HelperInstall.isInstalled ? "reapplied automatically" : "not reapplied")")
         if let live = HelperStatus.load() {
-            if let error = live.error {
-                print("  helper   \(error)")
-            } else {
-                print(
-                    "  helper   applied \(String(format: "%.2f", live.speed)) to Dock \(live.dockPID)")
-            }
+            print(
+                "  helper   \(live.error ?? "applied \(String(format: "%.2f", live.speed)) to Dock \(live.dockPID)")"
+            )
         }
         print("")
-        if let engine = try? Engine(refreshHz: refreshArg) {
-            emit(try engine.status(), json: json)
+        if let engine = try? Engine() {
+            print(describe(try engine.status()))
         } else {
             print("Run with sudo to read Dock directly.")
         }
 
     case "revert":
-        let engine = try Engine(refreshHz: refreshArg)
-        try engine.revert()
+        try Engine().revert()
         var config = Configuration.load()
         config.enabled = false
         try? config.save()
@@ -202,70 +139,34 @@ do {
         var config = Configuration.load()
         config.enabled = true
         if let speed = speedArg { config.speed = speed }
-        config.damping = dampingArg
         try config.save()
-        print(
-            """
-            Helper installed. It reapplies your setting whenever Dock restarts, \
-            including at login.
-
-              settings   \(Configuration.url.path)
-              helper     \(HelperInstall.executableURL.path)
-              job        \(HelperInstall.plistURL.path)
-
-            Remove it with `sudo spaceswitch uninstall`.
-            """)
+        print("Installed. Your setting is reapplied whenever Dock restarts.")
 
     case "uninstall":
-        // --keep leaves the running Dock alone, so the setting stays until Dock
-        // or the Mac restarts and nothing puts it back.
-        if !keepCurrent {
-            var config = Configuration.load()
-            config.enabled = false
-            try? config.save()
-            if let engine = try? Engine(refreshHz: refreshArg) { try? engine.revert() }
-        }
-        try HelperInstall.uninstall(purge: !keepCurrent)
-        print(
-            keepCurrent
-                ? "Helper removed. Dock keeps this setting until it restarts."
-                : "Removed. Dock is back to stock and nothing is left in /Library.")
+        var config = Configuration.load()
+        config.enabled = false
+        try? config.save()
+        if let engine = try? Engine() { try? engine.revert() }
+        try HelperInstall.uninstall()
+        print("Removed. Dock is back to stock and nothing is left in /Library.")
 
     default:
         guard let speed = speedArg else {
-            emit(try Engine(refreshHz: refreshArg).status(), json: json)
+            print(usage)
             exit(0)
         }
         guard Speed.range.contains(speed) else {
             fail(
                 String(
-                    format: "speed must be between %.1f and %.1f", Speed.range.lowerBound,
-                    Speed.range.upperBound))
+                    format: "speed must be between %.1f and %.1f",
+                    Speed.range.lowerBound, Speed.range.upperBound))
         }
-        if dryRun {
-            let model = SpringModel(dt: 1 / (refreshArg ?? SpringModel.referenceRefresh))
-            let (g, a) = model.coefficients(speed: speed, damping: dampingArg)
-            let r = model.simulate(gain: g, retention: a)
-            let s = model.simulate(gain: SpringModel.stockGain, retention: SpringModel.stockRetention)
-            print(
-                String(
-                    format: "speed %.2f  damping %.3f  ->  gain %.6f  retention %.6f",
-                    speed, dampingArg ?? model.stockDamping, g, a))
-            print(
-                String(
-                    format: "arrives in %.0f ms (stock %.0f ms, %.2fx), settles %.0f ms, overshoot %.1f%%",
-                    r.arrival * 1000, s.arrival * 1000, r.arrival / s.arrival, r.settle * 1000,
-                    r.overshoot * 100))
-            exit(0)
-        }
-        let engine = try Engine(refreshHz: refreshArg)
-        let status = try engine.apply(speed: speed, damping: dampingArg)
+        let status = try Engine().apply(speed: speed)
         var config = Configuration.load()
         config.enabled = true
         config.speed = speed
-        config.damping = dampingArg
         try? config.save()
-        emit(status, json: json)
+        print(describe(status))
     }
 } catch let error as SpaceSwitchError {
     fail(error.description)

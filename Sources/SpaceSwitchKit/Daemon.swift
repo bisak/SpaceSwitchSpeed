@@ -55,7 +55,7 @@ public final class Daemon: @unchecked Sendable {
             let engine = try Engine()
             let status: Status
             if config.enabled {
-                status = try engine.apply(speed: config.speed, damping: config.damping)
+                status = try engine.apply(speed: config.speed)
             } else {
                 try engine.revert()
                 status = try engine.status()
@@ -156,7 +156,7 @@ public final class Daemon: @unchecked Sendable {
     /// the Trash really is enough to be rid of SpaceSwitch.
     private func removeSelf() {
         if let engine = try? Engine() { try? engine.revert() }
-        try? HelperInstall.uninstall(purge: true)
+        try? HelperInstall.uninstall()
         exit(0)
     }
 }

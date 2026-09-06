@@ -107,22 +107,16 @@ public enum HelperInstall {
         }
     }
 
-    /// Removes the helper. `purge` also takes the saved settings and the
-    /// directory itself, leaving nothing of SpaceSwitch on the system volume;
-    /// without it the settings survive so the helper can be switched back on.
-    public static func uninstall(purge: Bool = true) throws {
+    /// Removes the helper and everything it wrote, leaving nothing of
+    /// SpaceSwitch on the system volume.
+    public static func uninstall() throws {
         guard geteuid() == 0 else { throw SpaceSwitchError.notPermitted(KERN_PROTECTION_FAILURE) }
         // Files first: booting out terminates the helper, and the helper is
         // itself a caller of this when it finds it has outlived its app.
         // `bootout` unloads by label, so it does not need the plist to remain.
         let fm = FileManager.default
         try? fm.removeItem(at: plistURL)
-        if purge {
-            try? fm.removeItem(at: Configuration.directory)
-        } else {
-            try? fm.removeItem(at: executableURL)
-            try? fm.removeItem(at: HelperStatus.url)
-        }
+        try? fm.removeItem(at: Configuration.directory)
         _ = launchctl(["bootout", "system/\(label)"])
     }
 

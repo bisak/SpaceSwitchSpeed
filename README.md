@@ -161,21 +161,15 @@ you want to prove that to yourself.
 ### Command line
 
 ```bash
-sudo spaceswitch                 # show what Dock is running now
-sudo spaceswitch 0.5             # set speed, 0.2 (fastest) to 1.0 (stock)
-sudo spaceswitch balanced        # presets by name
-sudo spaceswitch --damping 1.15 0.5  # override the chosen damping
-spaceswitch presets              # predicted timings for your display
-spaceswitch 0.4 --dry-run        # compute without touching Dock
-sudo spaceswitch revert          # back to Apple's constants
+sudo spaceswitch 0.5        # set speed, 0.2 (fastest) to 1.0 (stock)
+sudo spaceswitch balanced   # presets by name
+spaceswitch presets         # the presets and how long each takes
+spaceswitch status          # the saved setting; with sudo, what Dock is running
+sudo spaceswitch revert     # back to Apple's constants
 
-sudo spaceswitch install         # install the helper, survives restarts
-sudo spaceswitch uninstall       # remove it and revert
+sudo spaceswitch install    # install the helper, so the setting survives restarts
+sudo spaceswitch uninstall  # remove it and everything it wrote, and revert
 ```
-
-`--json` gives machine-readable output. `--refresh <hz>` only changes the refresh rate
-the predicted millisecond figures are reported for; it does not change what is written
-to Dock.
 
 ## Disabling System Integrity Protection
 
