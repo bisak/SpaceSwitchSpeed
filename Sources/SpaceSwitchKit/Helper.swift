@@ -8,26 +8,13 @@ import Foundation
 /// What the helper last did, so the unprivileged app can report the truth
 /// instead of assuming its settings took effect.
 public struct HelperStatus: Codable, Equatable, Sendable {
-    public var applied: Bool
     public var speed: Double
-    public var damping: Double
-    public var gain: Double
-    public var retention: Double
-    public var refreshHz: Double
     public var dockPID: Int32
     public var updatedAt: Date
     public var error: String?
 
-    public init(
-        applied: Bool, speed: Double, damping: Double, gain: Double, retention: Double,
-        refreshHz: Double, dockPID: Int32, updatedAt: Date, error: String?
-    ) {
-        self.applied = applied
+    public init(speed: Double, dockPID: Int32, updatedAt: Date, error: String?) {
         self.speed = speed
-        self.damping = damping
-        self.gain = gain
-        self.retention = retention
-        self.refreshHz = refreshHz
         self.dockPID = dockPID
         self.updatedAt = updatedAt
         self.error = error

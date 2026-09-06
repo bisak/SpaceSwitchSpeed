@@ -175,28 +175,6 @@ public struct SpringModel: Sendable {
         public let overshoot: Double
     }
 
-    /// The positions Dock would step through, one entry per display frame.
-    public func trajectory(
-        gain g: Double, retention a: Double,
-        from start: Double = 1.0, to target: Double = 0.0
-    ) -> [Double] {
-        var pos = start, v = 0.0
-        var path = [start]
-        let limit = Int(20.0 / dt)
-        while path.count < limit {
-            v = g * (target - pos) + a * v
-            pos += dt * v
-            path.append(pos)
-            if pos < 0 {
-                v = v * Self.bandVelocityDamping + (0 - pos) * Self.bandStiffness
-            } else if pos > 1 {
-                v = v * Self.bandVelocityDamping - (pos - 1) * Self.bandStiffness
-            }
-            if abs(v) < Self.settleEpsilon && abs(pos - target) < 0.001 { break }
-        }
-        return path
-    }
-
     /// Replays Dock's loop, including the rubber band, to predict how a
     /// coefficient pair will feel. Mirrors the disassembly at `__text:0x150f2c`.
     public func simulate(

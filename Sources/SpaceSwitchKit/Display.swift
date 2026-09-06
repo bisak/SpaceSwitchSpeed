@@ -30,6 +30,4 @@ public enum Display {
         }
         return fallbackRefresh
     }
-
-    public static func mainFrameInterval() -> Double { 1.0 / mainRefreshRate() }
 }

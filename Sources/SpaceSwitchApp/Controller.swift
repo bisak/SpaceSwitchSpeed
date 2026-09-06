@@ -30,8 +30,6 @@ final class Controller: ObservableObject {
         case failed(String)
     }
 
-    let model = SpringModel(dt: Display.mainFrameInterval())
-
     private var committed: Double
     private var poll: Task<Void, Never>?
 

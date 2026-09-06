@@ -122,10 +122,6 @@ public final class DockTarget {
             VM_PROT_READ | VM_PROT_EXECUTE)
     }
 
-    public func readWord(_ address: UInt64) throws -> UInt32 {
-        try read(address, 4).withUnsafeBytes { $0.loadUnaligned(as: UInt32.self) }
-    }
-
     public func readDouble(_ address: UInt64) throws -> Double {
         try read(address, 8).withUnsafeBytes { $0.loadUnaligned(as: Double.self) }
     }

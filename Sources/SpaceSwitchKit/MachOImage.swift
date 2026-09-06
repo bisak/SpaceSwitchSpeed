@@ -12,14 +12,12 @@ import MachO
 /// need no slide arithmetic and the tool can never be fooled by a binary that
 /// differs from the one currently running.
 public struct MachOImage {
-    public let loadAddress: UInt64
     public let sections: [String: (address: UInt64, size: UInt64)]
 
     public init(target: DockTarget) throws {
         guard let base = try MachOImage.findMainExecutable(target) else {
             throw SpaceSwitchError.imageNotFound
         }
-        loadAddress = base
 
         let header = try target.read(base, 32)
         let ncmds = header.withUnsafeBytes { $0.loadUnaligned(fromByteOffset: 16, as: UInt32.self) }

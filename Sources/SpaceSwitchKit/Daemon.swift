@@ -76,12 +76,7 @@ public final class Daemon: @unchecked Sendable {
 
     private func publish(_ status: Status?, error: String?) {
         HelperStatus(
-            applied: status?.applied ?? false,
             speed: status?.speed ?? Speed.stock,
-            damping: status?.damping ?? 0,
-            gain: status?.gain ?? 0,
-            retention: status?.retention ?? 0,
-            refreshHz: status?.refreshHz ?? 0,
             dockPID: status?.dockPID ?? 0,
             updatedAt: Date(),
             error: error
