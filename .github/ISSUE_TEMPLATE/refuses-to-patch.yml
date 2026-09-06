@@ -1,0 +1,40 @@
+name: It refuses to patch my Dock
+description: Space Switch Speed could not find the animation on your Mac.
+labels: ["dock-signature"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This is the report that is most useful, because it means a Dock build
+        differs from every one that has been checked. Apple Silicon and macOS 15
+        or later are required; macOS 13 and 14 are refused deliberately.
+  - type: input
+    id: macos
+    attributes:
+      label: macOS version and build
+      description: Apple menu → About This Mac, or `sw_vers -productVersion; sw_vers -buildVersion`
+      placeholder: 26.6.2 (25G83)
+    validations:
+      required: true
+  - type: input
+    id: model
+    attributes:
+      label: Mac model
+      description: "`sysctl -n hw.model`"
+      placeholder: Mac15,3
+    validations:
+      required: true
+  - type: textarea
+    id: check
+    attributes:
+      label: What the locator found
+      description: "Output of `make check-dock`, or of `dock-check` from a source build."
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: Helper log
+      description: "`log show --last 1h --predicate 'subsystem == \"com.bisak.spaceswitchspeed\"'`"
+      render: text

@@ -242,7 +242,7 @@ Worth being explicit, because "patches Dock" sounds alarming:
 |---|---|
 | Architecture | Apple Silicon (arm64e) only. Intel Macs are not supported. |
 | macOS | Verified against the Dock of every release listed [below](#which-versions-are-verified). macOS 15 Sequoia is the floor: 13 and 14 drive the animation from a fixed 60 Hz timestep rather than the display's, and Space Switch Speed refuses to patch them. |
-| Displays | Nothing to configure. The coefficients are per-frame, so refresh rate and multi-monitor setups make no practical difference. |
+| Displays | Nothing to configure, on any refresh rate or number of monitors. A speed setting takes the same wall-clock time on 60, 120 and 144 Hz, which is [not true of Apple's default](#faq). |
 | SIP | Debugging restrictions off (`csrutil enable --without debug`) is all it needs; a full `csrutil disable` also works. Nothing else in SIP matters to it. |
 
 ### Which versions are verified
@@ -290,6 +290,16 @@ the animation from a fixed 60 Hz timestep to the display's real frame interval, 
 why 13 and 14 are not supported. Either way it fails safely: it refuses to patch rather
 than writing to an address it has not positively identified, and `killall Dock` undoes
 anything it has done.
+
+**Is the animation slower on a 120 Hz or ProMotion display?**
+Yes, and it is not your imagination. Dock's spring uses per-frame coefficients with a
+timestep that macOS 15 takes from the display, so the same constants describe a
+different system at every refresh rate. Measured from Apple's own values, the switch
+settles in about 0.092 s at 60 Hz and 0.124 s at 120 Hz — a 60 Hz Mac's Space switch is
+genuinely faster, and slightly bouncier, than a ProMotion one. There is no setting for
+this and reporting it to Apple has not moved it. Space Switch Speed solves the spring
+for whatever your display reports, so a given speed takes the same wall-clock time on
+any of them. The [measurements are in the write-up](docs/REVERSE-ENGINEERING.md).
 
 **Is this about "Spaces", "desktops" or "workspaces"?**
 All the same thing. Apple's documentation calls them Spaces, Mission Control labels them

@@ -1,0 +1,27 @@
+name: Something else is wrong
+description: Anything that is not the Dock signature.
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected instead
+    validations:
+      required: true
+  - type: input
+    id: macos
+    attributes:
+      label: macOS version and build
+      placeholder: 26.6.2 (25G83)
+    validations:
+      required: true
+  - type: input
+    id: speed
+    attributes:
+      label: Slider position, if it matters
+      placeholder: "0.50"
