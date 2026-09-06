@@ -25,14 +25,13 @@ public struct SpringModel: Sendable {
     /// `|velocity|` below which Dock considers the animation finished.
     public static let settleEpsilon = 0.01
 
-    /// Frame interval used to convert between the loop's per-frame arithmetic
-    /// and seconds.
+    /// Frame interval the gain is solved at.
     ///
-    /// The coefficients this produces barely depend on it — measured across 60,
-    /// 120 and 144 Hz the gain moves half a percent and the retention not at
-    /// all, because `v = gain * error + retention * v` carries no timestep and
-    /// so fixes the dynamics per frame rather than per second. It is therefore
-    /// not worth detecting: only the predicted millisecond figures depend on it.
+    /// The coefficients depend on it only weakly — the retention not at all, and
+    /// the gain by half a percent at Balanced and four and a half at Instant,
+    /// measured across 60, 120 and 144 Hz — because `v = gain * error +
+    /// retention * v` carries no timestep and so fixes the dynamics per frame
+    /// rather than per second. It is therefore not detected.
     public static let referenceRefresh = 120.0
 
     /// Frame interval in seconds.

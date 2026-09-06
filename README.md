@@ -97,16 +97,21 @@ Switch it off there and Dock goes back to normal at once.
 ## Uninstall
 
 **Space Switch Speed → Remove Space Switch Speed…** puts Dock back, removes everything
-it installed, and quits. Then move the app to the Trash.
+it installed, and quits. Then move the app to the Trash. If a Dock could not be put
+back, it says so instead and leaves `killall Dock` to you.
 
 Or just delete the app. The helper notices within a few minutes, puts Dock back and
-removes itself. `killall Dock` undoes the patch immediately, at any time.
+removes itself. `killall Dock` clears the patch from that Dock at once, but while the
+helper is installed it puts the patch back within a second; the switch under Login
+Items, above, is what stops it.
 
 This is everything it puts on your Mac:
 
 - `/Library/LaunchDaemons/com.bisak.spaceswitchspeed.helper.plist`
 - `/Library/PrivilegedHelperTools/com.bisak.spaceswitchspeed.helper`
 - `/Library/Application Support/SpaceSwitchSpeed/`, which holds your setting
+- the app's own preferences file in your home folder, which **Remove** clears for the
+  account that runs it
 
 ## System Integrity Protection
 
@@ -198,9 +203,12 @@ the slide with a cross-fade and flattens every other animation on the system wit
 
 ## What it does not do
 
-- **Modify any file on disk.** The Dock binary is byte-identical before and after.
-- **Persist in Dock.** The change lives in one process's memory. `killall Dock` removes
-  it completely, and that is the escape hatch if anything ever looks wrong.
+- **Modify Dock, or anything else on the system volume.** The Dock binary is
+  byte-identical before and after; everything it does write is listed under
+  [Uninstall](#uninstall).
+- **Persist in Dock.** The change lives in one process's memory, and `killall Dock`
+  clears it; the helper then puts it back. If anything ever looks wrong, the switch
+  under Login Items stops the helper and puts Dock back at once.
 - **Change your SIP configuration, run a curl-to-bash installer, or phone home.**
 - **Write to anything it has not identified.** It finds the code by its shape, not by
   hardcoded addresses, and checks that Apple's exact constants are present before
@@ -214,7 +222,7 @@ the slide with a cross-fade and flattens every other animation on the system wit
 |---|---|
 | Architecture | Apple Silicon only. |
 | macOS | 15 Sequoia or later. 13 and 14 drive the animation from a fixed 60 Hz timestep rather than the display's, and are refused. |
-| Displays | Any refresh rate, any number of monitors, nothing to configure. A stop takes the same time on 60, 120 and 144 Hz, [unlike Apple's default](#faq). |
+| Displays | Any refresh rate, any number of monitors, nothing to configure. Each stop is roughly the same fraction of Apple's own timing on 60, 120 and 144 Hz; see the [FAQ](#faq). |
 | SIP | Debugging restrictions off is all it needs. A full `csrutil disable` also works. |
 
 ### Which versions are verified
@@ -240,25 +248,27 @@ build. `make check-dock` does the same for the Dock on your own Mac.
 It may. The animation is found by the shape of its code rather than by address, which
 has held across every release in the table above, but a real rewrite of Dock would
 defeat it. When that happens it refuses to patch rather than guessing, and
-`killall Dock` undoes anything it has done.
+`killall Dock` clears anything it had already done.
 
 **Is the animation slower on a 120 Hz or ProMotion display?**
 Yes. Dock's spring runs per frame, so the same constants animate about a third slower
 on a 120 Hz display than on a 60 Hz one, and Apple has not changed that. Space Switch
-Speed solves the spring for your display, so each stop takes the same time at any
-refresh rate. The measurements are in [the write-up](docs/REVERSE-ENGINEERING.md).
+Speed does not read the refresh rate; each stop is roughly the same fraction of Apple's
+timing on any display, within a tenth at Balanced and a fifth at Instant, so Quick on a
+ProMotion display is still a little slower than Quick on a 60 Hz one. The measurements are
+in [the write-up](docs/REVERSE-ENGINEERING.md).
 
 **Is this about "Spaces", "desktops" or "workspaces"?**
 All the same thing. Full-screen apps are Spaces too, so the slider covers moving in and
 out of those as well.
 
 **Can I remove the animation entirely?**
-**Instant** finishes in under 70 ms, which reads as a cut. Anything faster fights the
+**Instant** covers the distance in 50–70 ms, which reads as a cut. Anything faster fights the
 trackpad's gesture tracking. For no animation at all, use Reduce Motion.
 
 **Does it slow down my Mac or use battery?**
-No. It changes two numbers Dock already reads every frame. Nothing is polled and no
-code is injected.
+No. It changes two numbers Dock already reads every frame. The helper waits on events
+and wakes once a minute to check nothing was missed. No code is injected.
 
 **Is this the same as yabai, Amethyst or Rectangle?**
 No. Those are window managers. This changes one animation.

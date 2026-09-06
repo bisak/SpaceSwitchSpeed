@@ -78,9 +78,12 @@ It matters less than it looks for changing them, though, and that is worth recor
 because the opposite is the intuitive conclusion. The velocity step carries no
 timestep, so the coefficients fix the dynamics per frame and `position += dt · velocity`
 absorbs the difference. Solving the same speed setting for 60, 120 and 144 Hz gives
-gains of 6.7133, 6.7467 and 6.7522 with identical retention, and the animation takes
-the same wall-clock time on any of them. Space Switch Speed therefore does not detect the
-refresh rate at all; only its predicted timings depend on the fixed reference it uses.
+gains of 6.7133, 6.7467 and 6.7522 with identical retention: a spread of half a percent
+at that stop, and four and a half at Instant. Space Switch Speed therefore does not detect
+the refresh rate, and solves the gain at a fixed 120 Hz reference. What stays roughly put
+across refresh rates is each stop's fraction of Apple's own timing — within a tenth at
+Balanced, a fifth at Instant, where the arrival is a handful of frames — not the
+wall-clock time: a 60 Hz display stays a little quicker, as it is at stock.
 
 The discrete loop's characteristic polynomial is `z² − (1 + a − dt·g)z + a`, whose roots
 are real above roughly 75 Hz and complex below it. Both branches must be handled or the
@@ -127,9 +130,11 @@ verifies that re-establishing `adrp` is present and refuses to patch without it.
 `movi d3, #0` — leave the register zero throughout, and `ldr d3` likewise zeroes the top
 half and loads the bottom. The only later read is the scalar `fsub d19, d3, d17`, so
 nothing observes the difference. That last point is the whole assumption, so it is
-checked rather than trusted: the tool scans from the load to the rubber band and refuses
-if anything else writes *or reads* the register, a second reader being something that
-depends on the zero the patch is about to replace.
+checked rather than trusted: the tool scans from the load through the rubber band and on
+until something redefines the register or the function returns, and refuses if anything
+else writes *or reads* it, a second reader being something that depends on the zero the
+patch is about to replace — after the band too, since `fneg` leaves the gain in the
+register where `fsub` left it alone.
 
 **The rubber band keeps working.** `fsub d19, d3, d17` computed `0 − position` and
 relied on `d3` being zero. Since `d3` now holds the gain, it becomes `fneg d19, d17`,
@@ -200,8 +205,19 @@ is nothing left to say which one Apple used, and reconstructing the wrong one wo
 Dock running an instruction it did not ship. That single word is therefore stashed in the
 scratch page at patch time and read back on revert.
 
-`killall Dock` remains the unconditional escape hatch, since the patch only ever exists
-in memory.
+Two things keep a page that is not the tool's own from being read as one. An interrupted
+patch — the loads rewritten but the `adrp` not yet — leaves both `adrp`s naming the same
+page under a patched gain load, a shape that is neither stock nor patched, so the locator
+refuses it outright; an interrupted revert is refused the same way, because the gain load
+is the last word put back. And the stash doubles as proof of ownership: a build that
+merely happens to load two constants from offsets 0 and 8 carries no stash, and nothing
+is read from or written to a scratch page without one. The five words go in under one
+change of page protection rather than five, and a write that fails part-way leaves Dock
+refused, not misread, until it restarts.
+
+`killall Dock` clears the patch, since it only ever exists in memory; the helper then
+puts it back, so the switch under Login Items is the escape hatch while the helper is
+installed.
 
 ## Privileges
 
