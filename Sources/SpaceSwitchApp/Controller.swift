@@ -61,9 +61,11 @@ final class Controller: ObservableObject {
 
     var isEditable: Bool { note != .needsSIPDisabled && !busy }
 
-    /// The damping actually in force, whether chosen or derived.
-    var effectiveDamping: Double {
-        damping ?? model.damping(forSpeed: Speed.presets[Int(stop)].value)
+    /// The control is expressed as overshoot, which is what the eye sees; the
+    /// damping ratio behind it is not something anyone can picture.
+    var bounce: Double {
+        guard let damping, damping < 1 else { return 0 }
+        return Foundation.exp(-Double.pi * damping / (1 - damping * damping).squareRoot())
     }
 
     // MARK: - Changing the setting
@@ -73,9 +75,10 @@ final class Controller: ObservableObject {
         apply(stop: stop, damping: damping)
     }
 
-    func setDamping(_ value: Double?) {
-        damping = value
-        apply(stop: stop, damping: value)
+    func setBounce(_ value: Double) {
+        let chosen = SpringModel.damping(forOvershoot: value)
+        damping = chosen
+        apply(stop: stop, damping: chosen)
     }
 
     func setRunsAtLogin(_ enabled: Bool) {

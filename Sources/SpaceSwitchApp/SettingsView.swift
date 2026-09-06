@@ -57,15 +57,13 @@ private struct OptionsSheet: View {
     @ObservedObject var controller: Controller
     @Environment(\.dismiss) private var dismiss
 
-    @State private var automatic: Bool
-    @State private var damping: Double
+    @State private var bounce: Double
     @State private var runsAtLogin: Bool
     @State private var confirmingRemoval = false
 
     init(controller: Controller) {
         self.controller = controller
-        _automatic = State(initialValue: controller.damping == nil)
-        _damping = State(initialValue: controller.effectiveDamping)
+        _bounce = State(initialValue: controller.bounce)
         _runsAtLogin = State(initialValue: controller.runsAtLogin)
     }
 
@@ -74,23 +72,20 @@ private struct OptionsSheet: View {
             Form {
                 Section {
                     Toggle("Apply after restarting", isOn: $runsAtLogin)
-                    Toggle("Set damping automatically", isOn: $automatic.animation(.default))
-                    // Revealed rather than greyed out: a control the user
-                    // cannot touch is worse than one that is not there.
-                    if !automatic {
-                        LabeledContent("Damping") {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Slider(value: $damping, in: 0.6...1.6)
-                                HStack {
-                                    Text("Springy")
-                                    Spacer()
-                                    Text("Smooth")
-                                }
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                    LabeledContent("Bounce") {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Slider(
+                                value: $bounce,
+                                in: Speed.bounceRange.lowerBound...Speed.bounceRange.upperBound)
+                            HStack {
+                                Text("None")
+                                Spacer()
+                                Text("Springy")
                             }
-                            .frame(width: 240)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                         }
+                        .frame(width: 240)
                     }
                 }
 
@@ -108,7 +103,7 @@ private struct OptionsSheet: View {
                 Button("OK") {
                     // Everything here commits together, so Cancel really cancels.
                     controller.setRunsAtLogin(runsAtLogin)
-                    controller.setDamping(automatic ? nil : damping)
+                    controller.setBounce(bounce)
                     dismiss()
                 }
                 .keyboardShortcut(.defaultAction)
@@ -126,11 +121,6 @@ private struct OptionsSheet: View {
             Text(
                 "Space switching goes back to normal and nothing is left behind. SpaceSwitch will quit, and you can move it to the Trash."
             )
-        }
-        .onChange(of: automatic) { isAutomatic in
-            if isAutomatic {
-                damping = controller.model.damping(forSpeed: Speed.presets[Int(controller.stop)].value)
-            }
         }
     }
 }

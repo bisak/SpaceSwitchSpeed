@@ -51,6 +51,33 @@ struct SpringTests {
         }
     }
 
+    /// Damping used to change the pace as well as the character, because the
+    /// pace was pinned to the time constant and arrival is not monotonic in
+    /// damping under that constraint — it is slowest at critical damping and
+    /// quickens either side. Speed alone must decide when the motion arrives.
+    @Test("damping changes how the motion arrives, not when")
+    func dampingDoesNotChangePace() throws {
+        let model = SpringModel(dt: 1 / 120.0)
+        let reference = model.simulate(gain: 2.0, retention: 0.695).arrival
+
+        var previousOvershoot = -1.0
+        for bounce in stride(from: 0.0, through: Speed.bounceRange.upperBound, by: 0.02) {
+            let damping = SpringModel.damping(forOvershoot: bounce)
+            let (gain, retention) = model.coefficients(speed: 1.0, damping: damping)
+            let response = model.simulate(gain: gain, retention: retention)
+
+            // Within two frames of the pace the speed control asked for.
+            #expect(
+                abs(response.arrival - reference) < 2 / 120.0,
+                "bounce \(bounce) moved arrival to \(response.arrival) from \(reference)")
+            #expect(
+                response.overshoot >= previousOvershoot - 0.005,
+                "bounce \(bounce) should not overshoot less than the step below it")
+            previousOvershoot = response.overshoot
+        }
+        #expect(previousOvershoot > 0.05, "the top of the range should visibly overshoot")
+    }
+
     @Test("every preset is inside the supported range")
     func presetsAreInRange() {
         for preset in Speed.presets {
