@@ -16,6 +16,10 @@ Switch Speed adds the slider Apple never shipped.
 [![Apple Silicon](https://img.shields.io/badge/arch-Apple%20Silicon-black)](#compatibility)
 [![License](https://img.shields.io/badge/license-AGPL--3.0-blue)](LICENSE)
 
+**[Space Switch Speed on the web](https://bisak.github.io/SpaceSwitchSpeed/)** — install
+guide, the [write-up on why `defaults write` doesn't work](https://bisak.github.io/SpaceSwitchSpeed/why-defaults-write-doesnt-work/),
+and [why the animation is slower on a 120 Hz display](https://bisak.github.io/SpaceSwitchSpeed/high-refresh-rate/).
+
 ## Requirements
 
 - An Apple Silicon Mac running macOS 15 Sequoia or later. Intel Macs are not supported.
@@ -172,7 +176,8 @@ disappears when Dock restarts, which is why the helper puts it back. Default wri
 Apple's own constants back exactly, and Balanced really is half the time.
 
 The disassembly, the constants, the patch and why it is safe are written up in
-[docs/REVERSE-ENGINEERING.md](docs/REVERSE-ENGINEERING.md).
+[docs/REVERSE-ENGINEERING.md](docs/REVERSE-ENGINEERING.md), and
+[rendered on the web](https://bisak.github.io/SpaceSwitchSpeed/how-it-works/).
 
 ### Why `defaults write` doesn't fix this
 
@@ -257,7 +262,8 @@ on a 120 Hz display than on a 60 Hz one, and Apple has not changed that. Space S
 Speed does not read the refresh rate; each stop is roughly the same fraction of Apple's
 timing on any display, within a tenth at Balanced and a fifth at Instant, so Quick on a
 ProMotion display is still a little slower than Quick on a 60 Hz one. The measurements are
-in [the write-up](docs/REVERSE-ENGINEERING.md).
+in [the write-up](docs/REVERSE-ENGINEERING.md), and there is a fuller explanation of
+[why high refresh rates are slower](https://bisak.github.io/SpaceSwitchSpeed/high-refresh-rate/).
 
 **Is this about "Spaces", "desktops" or "workspaces"?**
 All the same thing. Full-screen apps are Spaces too, so the slider covers moving in and

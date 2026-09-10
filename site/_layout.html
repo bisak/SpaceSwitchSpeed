@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en" prefix="og: https://ogp.me/ns#">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{title}}</title>
+<meta name="description" content="{{description}}">
+<link rel="canonical" href="{{canonical}}">
+<meta name="theme-color" content="#f7f7f8" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#111113" media="(prefers-color-scheme: dark)">
+<meta name="color-scheme" content="light dark">
+<meta property="og:type" content="{{og_type}}">
+<meta property="og:site_name" content="Space Switch Speed">
+<meta property="og:title" content="{{og_title}}">
+<meta property="og:description" content="{{description}}">
+<meta property="og:url" content="{{canonical}}">
+<meta property="og:image" content="{{base}}/assets/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Space Switch Speed — the Speed slider, set from Default to Quick">
+<meta property="og:locale" content="en_GB">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="{{og_title}}">
+<meta name="twitter:description" content="{{description}}">
+<meta name="twitter:image" content="{{base}}/assets/og.png">
+{{robots}}<link rel="icon" href="{{base}}/assets/icon.png" type="image/png">
+<link rel="apple-touch-icon" href="{{base}}/assets/icon.png">
+<link rel="stylesheet" href="{{base}}/assets/site.css?v={{cachebust}}">
+<link rel="alternate" type="application/rss+xml" title="Space Switch Speed releases" href="https://github.com/bisak/SpaceSwitchSpeed/releases.atom">
+<script type="application/ld+json">{{jsonld}}</script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="masthead">
+  <div class="wrap masthead-inner">
+    <a class="brand" href="{{base}}/">
+      <img src="{{base}}/assets/icon.png" width="28" height="28" alt="" decoding="async">
+      <span>Space&nbsp;Switch&nbsp;Speed</span>
+    </a>
+    <nav aria-label="Primary">{{nav}}</nav>
+  </div>
+</header>
+<main id="main" class="wrap">
+{{breadcrumb}}{{content}}
+</main>
+<footer class="footer">
+  <div class="wrap">
+    <p><strong>Space Switch Speed</strong> is free software under the
+      <a href="https://github.com/bisak/SpaceSwitchSpeed/blob/main/LICENSE">AGPL-3.0-or-later</a>.
+      Not affiliated with, endorsed by, or connected to Apple Inc.</p>
+    <p class="footer-links">
+      <a href="https://github.com/bisak/SpaceSwitchSpeed">Source on GitHub</a>
+      <a href="https://github.com/bisak/SpaceSwitchSpeed/releases">Releases</a>
+      <a href="https://github.com/bisak/SpaceSwitchSpeed/issues">Report an issue</a>
+      <a href="{{base}}/sitemap.xml">Sitemap</a>
+    </p>
+  </div>
+</footer>
+<script>
+// The banner is a 205-frame animation and far too heavy to block first paint on, so the
+// page ships its first frame and fetches the animation once everything else has loaded.
+(function () {
+  var hero = document.getElementById("hero");
+  if (!hero || !hero.dataset.animated) return;
+  if (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  if (navigator.connection && (navigator.connection.saveData || /2g/.test(navigator.connection.effectiveType || ""))) return;
+  addEventListener("load", function () {
+    var full = new Image();
+    full.onload = function () { hero.src = hero.dataset.animated; };
+    full.src = hero.dataset.animated;
+  });
+})();
+</script>
+</body>
+</html>

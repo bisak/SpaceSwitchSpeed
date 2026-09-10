@@ -12,11 +12,14 @@ INSTALLED = /Applications/Space Switch Speed.app
 # The version is set once, in the project; the disk image is named after it.
 VERSION ?= $(shell sed -nE 's/^[[:space:]]*MARKETING_VERSION = ([^;]+);/\1/p' $(PROJECT)/project.pbxproj | head -1)
 DMG     = build/SpaceSwitchSpeed-$(VERSION).dmg
+SITE    = build/site
+SITEENV = build/site-venv
+PORT   ?= 8123
 
 XCB = xcodebuild -project $(PROJECT) -scheme $(SCHEME) -derivedDataPath $(DERIVED) \
       -destination 'platform=macOS,arch=arm64' -quiet
 
-.PHONY: help app run install test lint format check-dock fetch-dock icon banner background release clean verify ci
+.PHONY: help app run install test lint format check-dock fetch-dock icon banner background site serve release clean verify ci
 .NOTPARALLEL:
 
 help: ## Show this help
@@ -58,6 +61,21 @@ banner: ## Re-render the README banner (needs Google Chrome and Pillow): build t
 
 background: ## Re-render the disk image's window background
 	@swift Scripts/make-dmg-background.swift
+
+$(SITEENV)/bin/python: Scripts/site-requirements.txt
+	@python3 -m venv $(SITEENV)
+	@$(SITEENV)/bin/pip install --quiet --upgrade pip
+	@$(SITEENV)/bin/pip install --quiet -r Scripts/site-requirements.txt
+	@touch $@
+
+site: $(SITEENV)/bin/python ## Build the website into build/site (published to GitHub Pages)
+	@$(SITEENV)/bin/python Scripts/make-site.py
+
+serve: site ## Build the website and serve it locally (PORT=8123 by default)
+	@echo "http://localhost:$(PORT)/SpaceSwitchSpeed/"
+	@rm -rf build/serve && mkdir -p build/serve
+	@ln -s ../site build/serve/SpaceSwitchSpeed
+	@cd build/serve && python3 -m http.server $(PORT)
 
 release: ci ## Verify everything, then package the app as a disk image for a release
 	@Scripts/make-dmg.sh "$(APP)" $(VERSION) $(DMG)
